@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบบันทึกงานรอ Sort - CWM</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- เพิ่ม Flatpickr CSS สำหรับหน้าต่างเลือกเวลาแบบ 24 ชม. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
     <style>
         body { font-family: 'Sarabun', sans-serif; }
         .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
@@ -47,10 +51,10 @@
                     <input type="date" id="sort-date" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
 
-                <!-- 2. เวลา -->
+                <!-- 2. เวลา (ปรับเป็น Text เพื่อใช้ Flatpickr บังคับ 24H) -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time)</label>
-                    <input type="time" id="sort-time" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
+                    <input type="text" id="sort-time" required placeholder="HH:MM" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
                 </div>
 
                 <!-- 3. เครื่องจักร -->
@@ -145,14 +149,17 @@
         </div>
     </div>
 
+    <!-- เพิ่ม Flatpickr JS สำหรับสร้าง Time Picker 24H -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
     <script>
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyt3Bf_2h21BBcCHQSjizowy_kD5vsoUqgaC_YmVjLuQybJO1BBRt3eaSM0PuKEFfvruw/exec";
         let currentUser = null;
         let globalMachineMapping = {}; 
-        let allPendingJobs = []; // เก็บรายการทั้งหมดสำหรับการเรียงลำดับ
-        let currentSort = { field: 'date', order: 'desc' }; // ค่าเริ่มต้นการจัดเรียง
+        let allPendingJobs = []; 
+        let currentSort = { field: 'date', order: 'desc' }; 
+        let timePickerInstance = null; // ตัวแปรเก็บ Instance ของ Time Picker
 
-        // 1. ตรวจสอบสิทธิ์การเข้าถึงและตั้งค่าเริ่มต้น
         window.onload = () => {
             const savedUser = localStorage.getItem('CWM_AUTH_USER');
             if (!savedUser) {
@@ -172,12 +179,24 @@
 
             document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name || currentUser.username}</span> (${currentUser.role})`;
             
+            initTimePicker(); // เริ่มต้นการทำงานของ Flatpickr
             setDefaultDateTime();
             fetchOptions();
             loadSortJobs();
         };
 
-        // ฟังก์ชันตั้งค่าวันที่/เวลา
+        // ฟังก์ชันเริ่มต้น Time Picker บังคับ 24 ชั่วโมง
+        function initTimePicker() {
+            timePickerInstance = flatpickr("#sort-time", {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "H:i",    // รูปแบบ 24 ชั่วโมง (เช่น 14:30)
+                time_24hr: true,      // บังคับแสดงผลในหน้าต่างเป็น 24 ชั่วโมง
+                defaultDate: new Date() // ตั้งค่าเริ่มต้นเป็นเวลาปัจจุบัน
+            });
+        }
+
+        // ฟังก์ชันตั้งค่าวันที่/เวลาเริ่มต้น
         function setDefaultDateTime() {
             const today = new Date();
             const yyyy = today.getFullYear();
@@ -185,18 +204,18 @@
             const dd = String(today.getDate()).padStart(2, '0');
             document.getElementById('sort-date').value = `${yyyy}-${mm}-${dd}`;
             
-            const hours = String(today.getHours()).padStart(2, '0');
-            const mins = String(today.getMinutes()).padStart(2, '0');
-            document.getElementById('sort-time').value = `${hours}:${mins}`;
+            // รีเซ็ตเวลาใน Flatpickr ให้เป็นเวลาปัจจุบันล่าสุด
+            if(timePickerInstance) {
+                timePickerInstance.setDate(new Date());
+            }
         }
 
-        // 2. ดึงข้อมูลตัวเลือกทั้งหมด (Machine และ อาการ NG จาก Cloud)
+        // ดึงข้อมูลตัวเลือกทั้งหมด (Machine และ อาการ NG จาก Cloud)
         async function fetchOptions() {
             try {
                 const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
                 const data = await res.json();
                 
-                // โหลดอาการเสีย
                 const selectSymptom = document.getElementById('sort-symptom');
                 selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
                 if (data.ngTypes && data.ngTypes.length > 0) {
@@ -207,7 +226,6 @@
                     selectSymptom.innerHTML += `<option value="อื่นๆ">อื่นๆ</option>`;
                 }
 
-                // โหลดเครื่องจักรจาก Cloud
                 const selectMachine = document.getElementById('sort-machine');
                 selectMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
                 
@@ -215,7 +233,6 @@
                     globalMachineMapping = data.machineMapping;
                     let machineList = Object.keys(data.machineMapping).sort();
                     
-                    // หากไม่มีข้อมูลใน Cloud เลย ให้สร้าง Default CWM-01 ถึง 16
                     if (machineList.length === 0) {
                         machineList = Array.from({length: 16}, (_, i) => `CWM-${String(i+1).padStart(2,'0')}`);
                     }
@@ -231,7 +248,7 @@
             }
         }
 
-        // 3. ฟังก์ชันดึงรุ่นอัตโนมัติเมื่อเลือกเครื่อง
+        // ฟังก์ชันดึงรุ่นอัตโนมัติเมื่อเลือกเครื่อง
         window.onMachineChange = function() {
             const mac = document.getElementById('sort-machine').value;
             const modSelect = document.getElementById('sort-product');
@@ -243,16 +260,15 @@
             }
         };
 
-        // 4. บันทึกงานรอ Sort ใหม่
+        // บันทึกงานรอ Sort ใหม่
         async function submitSortJob(e) {
             e.preventDefault();
             const btn = document.getElementById('btn-save-sort');
             btn.disabled = true;
             btn.innerHTML = "⏳ กำลังบันทึก...";
 
-            // ดึงข้อมูลฟอร์ม
             const dateVal = document.getElementById('sort-date').value;
-            const timeVal = document.getElementById('sort-time').value; // มีไว้ให้ผู้ใช้เลือก แต่ไม่ใส่ในหมายเหตุแล้ว
+            const timeVal = document.getElementById('sort-time').value; // จะได้ค่าเป็น HH:MM เสมอ
             const machineVal = document.getElementById('sort-machine').value;
             const productVal = document.getElementById('sort-product').value;
             const symptomVal = document.getElementById('sort-symptom').value;
@@ -260,14 +276,15 @@
             const unitVal = document.getElementById('sort-unit').value;
             const remarkVal = document.getElementById('sort-remark').value;
 
+            // นำเวลามาต่อท้ายวันที่ หรือสามารถนำไปใส่ในส่วนหมายเหตุก็ได้
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${qtyVal} ${unitVal}`; 
-            const finalRemark = remarkVal.trim(); // ใส่เฉพาะหมายเหตุตามที่ร้องขอ
+            const finalRemark = remarkVal.trim(); 
 
             const payload = {
                 action: 'SAVE_SORTING',
                 data: {
-                    date: dateVal,
+                    date: `${dateVal} ${timeVal}`, // นำเวลาไปผูกกับวันที่เพื่อบันทึก
                     product: finalProduct,
                     symptom: symptomVal,
                     qty: finalQty,
@@ -285,7 +302,7 @@
                     alert("✅ บันทึกงานรอ Sort สำเร็จ");
                     document.getElementById('sortForm').reset();
                     setDefaultDateTime(); 
-                    document.getElementById('sort-unit').value = 'kg'; // คืนค่า Default เป็น kg
+                    document.getElementById('sort-unit').value = 'kg'; 
                     loadSortJobs(); 
                 } else {
                     alert("❌ เกิดข้อผิดพลาด: " + result.message);
@@ -298,7 +315,7 @@
             }
         }
 
-        // 5. โหลดรายการงานที่รอ Sort
+        // โหลดรายการงานที่รอ Sort
         async function loadSortJobs() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
@@ -318,7 +335,6 @@
             }
         }
 
-        // --- ส่วนการคำนวณและแสดงผลหน่วย (ชิ้น <-> kg) ---
         function getWeightPerPc(productStr) {
             if (!productStr) return 0.003;
             if (productStr.includes("10A")) return 0.00228;
@@ -353,7 +369,6 @@
             }
         }
 
-        // 6. ฟังก์ชันสลับการเรียงลำดับตาราง
         window.toggleSort = function(field) {
             if (currentSort.field === field) {
                 currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
@@ -362,12 +377,10 @@
                 currentSort.order = 'desc';
             }
             
-            // อัปเดตไอคอน
             document.getElementById('sort-icon-date').innerText = currentSort.order === 'asc' ? '▲' : '▼';
             renderTable();
         };
 
-        // 7. เรนเดอร์ข้อมูลลงตาราง
         function renderTable() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
@@ -378,7 +391,6 @@
                 return;
             }
 
-            // เรียงข้อมูลตาม Field และ Order
             allPendingJobs.sort((a, b) => {
                 let valA = a[currentSort.field] || '';
                 let valB = b[currentSort.field] || '';
@@ -413,7 +425,6 @@
                 `;
             });
 
-            // แสดงยอดรวมด้านล่าง
             tfoot.innerHTML = `
                 <tr>
                     <td colspan="4" class="p-4 text-right font-bold text-blue-900 border-t-2 border-blue-200">
@@ -429,7 +440,6 @@
             tfoot.classList.remove('hidden');
         }
 
-        // 8. อัปเดตสถานะว่า Sort เสร็จแล้ว
         async function markAsDone(jobId) {
             if (!confirm(`ยืนยันการปิดงาน Sort รหัส: ${jobId} ใช่หรือไม่?`)) return;
 
