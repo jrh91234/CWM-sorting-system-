@@ -185,13 +185,14 @@
             loadSortJobs();
         };
 
-        // ฟังก์ชันเริ่มต้น Time Picker บังคับ 24 ชั่วโมง
+        // ฟังก์ชันเริ่มต้น Time Picker บังคับ 24 ชั่วโมง และปิด UI บนมือถือ
         function initTimePicker() {
             timePickerInstance = flatpickr("#sort-time", {
                 enableTime: true,
                 noCalendar: true,
                 dateFormat: "H:i",    // รูปแบบ 24 ชั่วโมง (เช่น 14:30)
                 time_24hr: true,      // บังคับแสดงผลในหน้าต่างเป็น 24 ชั่วโมง
+                disableMobile: true,  // บังคับปิด UI นาฬิกาของมือถือเพื่อแก้ปัญหา Error "ป้อนค่าที่ถูกต้อง"
                 defaultDate: new Date() // ตั้งค่าเริ่มต้นเป็นเวลาปัจจุบัน
             });
         }
