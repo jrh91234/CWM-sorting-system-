@@ -270,12 +270,12 @@
                 
                 const selectSymptom = document.getElementById('sort-symptom');
                 selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                
+                // ดึงเฉพาะจาก Cloud เท่านั้น (ไม่มี fallback แบบ manual "อื่นๆ")
                 if (data.ngTypes && data.ngTypes.length > 0) {
                     data.ngTypes.forEach(symptom => {
                         selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
                     });
-                } else {
-                    selectSymptom.innerHTML += `<option value="อื่นๆ">อื่นๆ</option>`;
                 }
 
                 const selectMachine = document.getElementById('sort-machine');
@@ -295,7 +295,8 @@
                 }
             } catch (err) {
                 console.error("Failed to load options", err);
-                document.getElementById('sort-symptom').innerHTML = '<option value="">(โหลดไม่สำเร็จ กรอกในหมายเหตุแทน)</option>';
+                // หากดึงข้อมูลล้มเหลว จะไม่เปิดให้กรอกแบบ local ป้องกันข้อมูลทับซ้อน
+                document.getElementById('sort-symptom').innerHTML = '<option value="">-- โหลดอาการเสียไม่สำเร็จ --</option>';
                 document.getElementById('sort-machine').innerHTML = '<option value="">(ไม่สามารถโหลดข้อมูลเครื่องจักรได้)</option>';
             }
         }
@@ -324,6 +325,15 @@
             const machineVal = document.getElementById('sort-machine').value;
             const productVal = document.getElementById('sort-product').value;
             const symptomVal = document.getElementById('sort-symptom').value;
+            
+            // เช็คว่าโหลดอาการเสียมาได้หรือไม่ ถ้าเป็นค่าว่างให้หยุดทำงานและแจ้งเตือน
+            if (!symptomVal) {
+                alert("กรุณาเลือกอาการเสียจากระบบ");
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
+
             const qtyVal = document.getElementById('sort-qty').value;
             const unitVal = document.getElementById('sort-unit').value;
             const remarkVal = document.getElementById('sort-remark').value;
