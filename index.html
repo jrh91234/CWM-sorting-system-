@@ -15,6 +15,12 @@
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .sortable-header { cursor: pointer; user-select: none; }
         .sortable-header:hover { background-color: #e2e8f0; }
+        
+        /* สไตล์ Scrollbar เล็กสำหรับกล่องสรุป */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -77,7 +83,7 @@
                     </select>
                 </div>
 
-                <!-- 5. ขั้นตอนที่พบ (เพิ่มใหม่) -->
+                <!-- 5. ขั้นตอนที่พบ -->
                 <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">ขั้นตอนที่พบ (Stage)</label>
                     <div class="flex gap-2">
@@ -126,7 +132,7 @@
         </div>
 
         <!-- Table Section -->
-        <div class="bg-white rounded-xl shadow-md p-6">
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-3 mb-4 gap-3">
                 <h2 class="text-lg font-bold text-gray-800">📋 รายการงานรอ Sort (Pending)</h2>
                 
@@ -141,7 +147,7 @@
             </div>
             
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left border-collapse mb-4">
                     <thead>
                         <tr class="bg-gray-50 text-gray-600 text-sm uppercase">
                             <th class="p-3 border-b">รหัสงาน</th>
@@ -161,7 +167,7 @@
                         <tr><td colspan="7" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
                     </tbody>
                     <tfoot id="sort-table-foot" class="bg-blue-50 hidden">
-                        <!-- สรุปยอดรวมจะถูกสร้างด้วย JS -->
+                        <!-- สรุปยอดรวมจะถูกสร้างด้วย JS (ปรับใหม่เป็น Breakdown) -->
                     </tfoot>
                 </table>
             </div>
@@ -184,7 +190,7 @@
             </div>
             
             <p class="text-xs text-gray-500 mb-2 font-bold">รายการตัวเลือกปัจจุบัน:</p>
-            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50">
+            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50 custom-scrollbar">
                 <!-- รายการจะถูกสร้างด้วย JS -->
             </ul>
         </div>
@@ -250,7 +256,7 @@
         let globalMachineMapping = {}; 
         let allPendingJobs = []; 
         let currentSort = { field: 'date', order: 'desc' }; 
-        let timePickerInstance = null; // ตัวแปรเก็บ Instance ของ Time Picker
+        let timePickerInstance = null;
 
         // ค่าเริ่มต้นและตัวแปรสำหรับ Dropdown "ขั้นตอน (Stage)"
         const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG"];
@@ -277,7 +283,7 @@
             
             initTimePicker();
             setDefaultDateTime();
-            renderStageDropdown(); // เรนเดอร์ตัวเลือกขั้นตอนตอนโหลด
+            renderStageDropdown(); 
             fetchOptions();
             loadSortJobs();
         };
@@ -298,7 +304,7 @@
 
         function closeStageModal() {
             document.getElementById('manageStageModal').classList.add('hidden');
-            renderStageDropdown(); // อัปเดต dropdown ทันทีที่ปิด modal
+            renderStageDropdown();
         }
 
         function renderStageList() {
@@ -434,7 +440,6 @@
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${qtyVal} ${unitVal}`; 
             
-            // นำ "ขั้นตอนที่พบ (Stage)" ไปรวมกับ "หมายเหตุ" เพื่อส่งไปบันทึก
             const finalRemark = `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim();
 
             const payload = {
@@ -557,6 +562,7 @@
             return patternIdx === pattern.length;
         }
 
+        // --- เรนเดอร์ตารางและสรุปยอดรวม (Breakdown) ---
         function renderTable() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
@@ -586,14 +592,41 @@
             });
 
             tbody.innerHTML = '';
+            
+            // ตัวแปรสำหรับเก็บยอดสรุป
             let totalPcs = 0;
             let totalKg = 0;
+            let breakdownModel = {};
+            let breakdownMachine = {};
 
             jobsToRender.forEach(job => {
-                const qtyInfo = parseQuantity(job.qty, job.product);
+                // วิเคราะห์แยกรุ่นและเครื่องจักรจาก job.product (เช่น "CWM-01 : S1B29288-JR (10A)")
+                let machine = "ไม่ระบุเครื่อง";
+                let model = job.product;
+                
+                if (job.product.includes(" : ")) {
+                    const parts = job.product.split(" : ");
+                    machine = parts[0].trim();
+                    model = parts[1].trim();
+                }
+
+                const qtyInfo = parseQuantity(job.qty, model);
+                
+                // ยอดรวมทั้งหมด
                 totalPcs += qtyInfo.pcs;
                 totalKg += qtyInfo.kg;
+                
+                // ยอดแยกตามรุ่น
+                if (!breakdownModel[model]) breakdownModel[model] = { pcs: 0, kg: 0 };
+                breakdownModel[model].pcs += qtyInfo.pcs;
+                breakdownModel[model].kg += qtyInfo.kg;
+                
+                // ยอดแยกตามเครื่องจักร
+                if (!breakdownMachine[machine]) breakdownMachine[machine] = { pcs: 0, kg: 0 };
+                breakdownMachine[machine].pcs += qtyInfo.pcs;
+                breakdownMachine[machine].kg += qtyInfo.kg;
 
+                // สร้างแถวตาราง
                 tbody.innerHTML += `
                     <tr class="hover:bg-gray-50 border-b">
                         <td class="p-3 text-xs font-mono text-gray-500">${job.jobId}</td>
@@ -611,16 +644,61 @@
                 `;
             });
 
+            // สร้าง HTML สำหรับ Breakdown รุ่น
+            let modelHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
+            let modelKeys = Object.keys(breakdownModel).sort();
+            modelKeys.forEach(m => {
+                modelHtml += `
+                    <li class="flex justify-between items-center border-b border-gray-100 pb-1">
+                        <span class="font-semibold text-blue-900 truncate pr-2">${m}</span>
+                        <span class="text-right whitespace-nowrap"><span class="font-bold">${breakdownModel[m].kg.toFixed(2)} kg</span> <span class="text-xs text-gray-500">(${breakdownModel[m].pcs.toLocaleString()} ชิ้น)</span></span>
+                    </li>`;
+            });
+            modelHtml += '</ul>';
+
+            // สร้าง HTML สำหรับ Breakdown เครื่องจักร
+            let machineHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
+            let machineKeys = Object.keys(breakdownMachine).sort();
+            machineKeys.forEach(m => {
+                machineHtml += `
+                    <li class="flex justify-between items-center border-b border-gray-100 pb-1">
+                        <span class="font-semibold text-gray-800">${m}</span>
+                        <span class="text-right whitespace-nowrap"><span class="font-bold">${breakdownMachine[m].kg.toFixed(2)} kg</span> <span class="text-xs text-gray-500">(${breakdownMachine[m].pcs.toLocaleString()} ชิ้น)</span></span>
+                    </li>`;
+            });
+            machineHtml += '</ul>';
+
+            // นำยอด Breakdown มาใส่ใน Tfoot
             tfoot.innerHTML = `
                 <tr>
-                    <td colspan="4" class="p-4 text-right font-bold text-blue-900 border-t-2 border-blue-200">
-                        รวมงานรอ Sort ทั้งหมด:
+                    <td colspan="7" class="p-4 bg-gray-50 border-t-2 border-blue-300">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            <!-- 1. กล่องรวมทั้งหมด -->
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col justify-center items-center text-center">
+                                <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมงานรอ Sort ทั้งหมด</h4>
+                                <div class="text-4xl font-extrabold text-blue-800 mb-1">${totalKg.toFixed(2)} <span class="text-xl">kg</span></div>
+                                <div class="text-lg text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">${totalPcs.toLocaleString()} ชิ้น</div>
+                            </div>
+                            
+                            <!-- 2. กล่องแยกตามรุ่น -->
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">📦 แยกตามรุ่น (Model)</h4>
+                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                    ${modelHtml}
+                                </div>
+                            </div>
+
+                            <!-- 3. กล่องแยกตามเครื่อง -->
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">⚙️ แยกตามเครื่อง (Machine)</h4>
+                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                    ${machineHtml}
+                                </div>
+                            </div>
+                            
+                        </div>
                     </td>
-                    <td class="p-4 text-right border-t-2 border-blue-200 leading-tight">
-                        <span class="font-bold text-blue-900 text-base">${totalKg.toFixed(2)} kg</span><br>
-                        <span class="text-sm text-blue-700 font-medium">(${totalPcs.toLocaleString()} ชิ้น)</span>
-                    </td>
-                    <td colspan="2" class="p-4 border-t-2 border-blue-200"></td>
                 </tr>
             `;
             tfoot.classList.remove('hidden');
