@@ -51,7 +51,7 @@
                     <input type="date" id="sort-date" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
 
-                <!-- 2. เวลา (ปรับเป็น Text เพื่อใช้ Flatpickr บังคับ 24H) -->
+                <!-- 2. เวลา -->
                 <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
                     <input type="text" id="sort-time" required placeholder="HH:MM" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
@@ -77,7 +77,20 @@
                     </select>
                 </div>
 
-                <!-- 5. อาการเสีย -->
+                <!-- 5. ขั้นตอนที่พบ (เพิ่มใหม่) -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ขั้นตอนที่พบ (Stage)</label>
+                    <div class="flex gap-2">
+                        <select id="sort-stage" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                            <!-- จะถูกใส่ตัวเลือกด้วย JS -->
+                        </select>
+                        <button type="button" onclick="openStageModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 rounded-lg transition" title="จัดการตัวเลือก">
+                            ⚙️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 6. อาการเสีย -->
                 <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">อาการเสีย (NG Symptom)</label>
                     <select id="sort-symptom" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
@@ -85,7 +98,7 @@
                     </select>
                 </div>
 
-                <!-- 6. จำนวนและหน่วย (kg/ชิ้น) -->
+                <!-- 7. จำนวนและหน่วย (kg/ชิ้น) -->
                 <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">จำนวนที่รอ Sort</label>
                     <div class="flex gap-2">
@@ -97,8 +110,8 @@
                     </div>
                 </div>
 
-                <!-- 7. หมายเหตุ -->
-                <div class="lg:col-span-2">
+                <!-- 8. หมายเหตุ -->
+                <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">หมายเหตุ / จุดที่พบ</label>
                     <input type="text" id="sort-remark" placeholder="ใส่เฉพาะหมายเหตุ..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
@@ -118,7 +131,7 @@
                 <h2 class="text-lg font-bold text-gray-800">📋 รายการงานรอ Sort (Pending)</h2>
                 
                 <div class="flex w-full md:w-auto gap-2">
-                    <!-- เพิ่มช่องค้นหาข้อมูลแบบ Fuzzy -->
+                    <!-- ช่องค้นหาข้อมูลแบบ Fuzzy -->
                     <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
                     
                     <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
@@ -152,6 +165,28 @@
                     </tfoot>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Modal จัดการขั้นตอน (Stage) -->
+    <div id="manageStageModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-800">⚙️ จัดการตัวเลือกขั้นตอน</h3>
+                <button type="button" onclick="closeStageModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="new-stage-input" placeholder="พิมพ์ตัวเลือกใหม่..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <button type="button" onclick="addStage()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold transition">+</button>
+            </div>
+            
+            <p class="text-xs text-gray-500 mb-2 font-bold">รายการตัวเลือกปัจจุบัน:</p>
+            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50">
+                <!-- รายการจะถูกสร้างด้วย JS -->
+            </ul>
         </div>
     </div>
 
@@ -217,6 +252,10 @@
         let currentSort = { field: 'date', order: 'desc' }; 
         let timePickerInstance = null; // ตัวแปรเก็บ Instance ของ Time Picker
 
+        // ค่าเริ่มต้นและตัวแปรสำหรับ Dropdown "ขั้นตอน (Stage)"
+        const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG"];
+        let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
+
         window.onload = () => {
             const savedUser = localStorage.getItem('CWM_AUTH_USER');
             if (!savedUser) {
@@ -236,25 +275,78 @@
 
             document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name || currentUser.username}</span> (${currentUser.role})`;
             
-            initTimePicker(); // เริ่มต้นการทำงานของ Flatpickr
+            initTimePicker();
             setDefaultDateTime();
+            renderStageDropdown(); // เรนเดอร์ตัวเลือกขั้นตอนตอนโหลด
             fetchOptions();
             loadSortJobs();
         };
 
-        // ฟังก์ชันเริ่มต้น Time Picker บังคับ 24 ชั่วโมง และปิด UI บนมือถือ
+        // --- ระบบจัดการขั้นตอน (Stage Management) ---
+        function renderStageDropdown() {
+            const select = document.getElementById('sort-stage');
+            select.innerHTML = '<option value="">-- เลือกขั้นตอน --</option>';
+            currentStages.forEach(stage => {
+                select.innerHTML += `<option value="${stage}">${stage}</option>`;
+            });
+        }
+
+        function openStageModal() {
+            renderStageList();
+            document.getElementById('manageStageModal').classList.remove('hidden');
+        }
+
+        function closeStageModal() {
+            document.getElementById('manageStageModal').classList.add('hidden');
+            renderStageDropdown(); // อัปเดต dropdown ทันทีที่ปิด modal
+        }
+
+        function renderStageList() {
+            const list = document.getElementById('stage-list');
+            list.innerHTML = '';
+            currentStages.forEach((stage, index) => {
+                list.innerHTML += `
+                    <li class="flex justify-between items-center p-3 hover:bg-gray-100 text-sm border-b last:border-b-0">
+                        <span class="text-gray-800 font-medium">${stage}</span>
+                        <button type="button" onclick="removeStage(${index})" class="text-red-500 hover:text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold transition">ลบ</button>
+                    </li>
+                `;
+            });
+        }
+
+        function addStage() {
+            const input = document.getElementById('new-stage-input');
+            const val = input.value.trim();
+            if (val && !currentStages.includes(val)) {
+                currentStages.push(val);
+                localStorage.setItem('CWM_STAGES', JSON.stringify(currentStages));
+                input.value = '';
+                renderStageList();
+            } else if (currentStages.includes(val)) {
+                alert("มีตัวเลือกนี้อยู่แล้ว");
+            }
+        }
+
+        function removeStage(index) {
+            if (confirm(`คุณต้องการลบตัวเลือก "${currentStages[index]}" ใช่หรือไม่?`)) {
+                currentStages.splice(index, 1);
+                localStorage.setItem('CWM_STAGES', JSON.stringify(currentStages));
+                renderStageList();
+            }
+        }
+
+        // --- ระบบอื่นๆ ---
         function initTimePicker() {
             timePickerInstance = flatpickr("#sort-time", {
                 enableTime: true,
                 noCalendar: true,
-                dateFormat: "H:i",    // รูปแบบ 24 ชั่วโมง (เช่น 14:30)
-                time_24hr: true,      // บังคับแสดงผลในหน้าต่างเป็น 24 ชั่วโมง
-                disableMobile: true,  // บังคับปิด UI นาฬิกาของมือถือเพื่อแก้ปัญหา Error "ป้อนค่าที่ถูกต้อง"
-                defaultDate: new Date() // ตั้งค่าเริ่มต้นเป็นเวลาปัจจุบัน
+                dateFormat: "H:i",
+                time_24hr: true,
+                disableMobile: true,
+                defaultDate: new Date()
             });
         }
 
-        // ฟังก์ชันตั้งค่าวันที่/เวลาเริ่มต้น
         function setDefaultDateTime() {
             const today = new Date();
             const yyyy = today.getFullYear();
@@ -262,13 +354,11 @@
             const dd = String(today.getDate()).padStart(2, '0');
             document.getElementById('sort-date').value = `${yyyy}-${mm}-${dd}`;
             
-            // รีเซ็ตเวลาใน Flatpickr ให้เป็นเวลาปัจจุบันล่าสุด
             if(timePickerInstance) {
                 timePickerInstance.setDate(new Date());
             }
         }
 
-        // ดึงข้อมูลตัวเลือกทั้งหมด (Machine และ อาการ NG จาก Cloud)
         async function fetchOptions() {
             try {
                 const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
@@ -277,7 +367,6 @@
                 const selectSymptom = document.getElementById('sort-symptom');
                 selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
                 
-                // ดึงเฉพาะจาก Cloud เท่านั้น (ไม่มี fallback แบบ manual "อื่นๆ")
                 if (data.ngTypes && data.ngTypes.length > 0) {
                     data.ngTypes.forEach(symptom => {
                         selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
@@ -301,13 +390,11 @@
                 }
             } catch (err) {
                 console.error("Failed to load options", err);
-                // หากดึงข้อมูลล้มเหลว จะไม่เปิดให้กรอกแบบ local ป้องกันข้อมูลทับซ้อน
                 document.getElementById('sort-symptom').innerHTML = '<option value="">-- โหลดอาการเสียไม่สำเร็จ --</option>';
                 document.getElementById('sort-machine').innerHTML = '<option value="">(ไม่สามารถโหลดข้อมูลเครื่องจักรได้)</option>';
             }
         }
 
-        // ฟังก์ชันดึงรุ่นอัตโนมัติเมื่อเลือกเครื่อง
         window.onMachineChange = function() {
             const mac = document.getElementById('sort-machine').value;
             const modSelect = document.getElementById('sort-product');
@@ -327,12 +414,12 @@
             btn.innerHTML = "⏳ กำลังบันทึก...";
 
             const dateVal = document.getElementById('sort-date').value;
-            const timeVal = document.getElementById('sort-time').value; // จะได้ค่าเป็น HH:MM เสมอ
+            const timeVal = document.getElementById('sort-time').value;
             const machineVal = document.getElementById('sort-machine').value;
             const productVal = document.getElementById('sort-product').value;
+            const stageVal = document.getElementById('sort-stage').value;
             const symptomVal = document.getElementById('sort-symptom').value;
             
-            // เช็คว่าโหลดอาการเสียมาได้หรือไม่ ถ้าเป็นค่าว่างให้หยุดทำงานและแจ้งเตือน
             if (!symptomVal) {
                 alert("กรุณาเลือกอาการเสียจากระบบ");
                 btn.disabled = false;
@@ -342,17 +429,18 @@
 
             const qtyVal = document.getElementById('sort-qty').value;
             const unitVal = document.getElementById('sort-unit').value;
-            const remarkVal = document.getElementById('sort-remark').value;
+            let remarkVal = document.getElementById('sort-remark').value;
 
-            // นำเวลามาต่อท้ายวันที่ หรือสามารถนำไปใส่ในส่วนหมายเหตุก็ได้
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${qtyVal} ${unitVal}`; 
-            const finalRemark = remarkVal.trim(); 
+            
+            // นำ "ขั้นตอนที่พบ (Stage)" ไปรวมกับ "หมายเหตุ" เพื่อส่งไปบันทึก
+            const finalRemark = `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim();
 
             const payload = {
                 action: 'SAVE_SORTING',
                 data: {
-                    date: `${dateVal} ${timeVal}`, // นำเวลาไปผูกกับวันที่เพื่อบันทึก
+                    date: `${dateVal} ${timeVal}`,
                     product: finalProduct,
                     symptom: symptomVal,
                     qty: finalQty,
@@ -371,6 +459,7 @@
                     document.getElementById('sortForm').reset();
                     setDefaultDateTime(); 
                     document.getElementById('sort-unit').value = 'kg'; 
+                    document.getElementById('sort-stage').value = ''; 
                     loadSortJobs(); 
                 } else {
                     alert("❌ เกิดข้อผิดพลาด: " + result.message);
@@ -383,7 +472,6 @@
             }
         }
 
-        // โหลดรายการงานที่รอ Sort
         async function loadSortJobs() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
@@ -449,15 +537,13 @@
             renderTable();
         };
 
-        // --- เพิ่มฟังก์ชันค้นหา (Fuzzy Search) ---
         window.filterJobs = function() {
             renderTable();
         };
 
-        // อัลกอริทึม Fuzzy Match (เช็คว่าตัวอักษรค้นหามีอยู่ในข้อความตามลำดับหรือไม่ โดยไม่จำเป็นต้องติดกัน)
         function fuzzyMatch(pattern, str) {
             if (!pattern) return true;
-            pattern = pattern.toLowerCase().replace(/\s/g, ''); // เอาช่องว่างออกตอนเช็คแพทเทิร์น
+            pattern = pattern.toLowerCase().replace(/\s/g, ''); 
             str = str.toLowerCase();
             let patternIdx = 0;
             let strIdx = 0;
@@ -476,9 +562,7 @@
             const tfoot = document.getElementById('sort-table-foot');
             const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
             
-            // กรองข้อมูลด้วย Fuzzy Search ก่อนนำไปแสดง
             let jobsToRender = allPendingJobs.filter(job => {
-                // นำข้อความที่ต้องการให้ค้นหาได้มารวมเป็นก้อนเดียวกัน (รหัสงาน, วันที่, สินค้า, อาการ, หมายเหตุ, ผู้แจ้ง)
                 const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder}`;
                 return fuzzyMatch(searchInput, searchString);
             });
@@ -493,7 +577,6 @@
                 return;
             }
 
-            // เรียงลำดับข้อมูลที่ถูกกรองมาแล้ว
             jobsToRender.sort((a, b) => {
                 let valA = a[currentSort.field] || '';
                 let valB = b[currentSort.field] || '';
@@ -520,7 +603,6 @@
                         <td class="p-3 text-sm text-right leading-tight">${qtyInfo.display}</td>
                         <td class="p-3 text-sm">${job.recorder}</td>
                         <td class="p-3 text-center">
-                            <!-- เปลี่ยนจากการยืนยันแบบธรรมดา ไปเรียกใช้ฟังก์ชันเปิด Modal -->
                             <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded text-xs font-bold transition-colors border border-green-300 shadow-sm">
                                 ✔ ปิดงาน (Done)
                             </button>
@@ -544,9 +626,6 @@
             tfoot.classList.remove('hidden');
         }
 
-        // --- ส่วนของการจัดการ Modal ปิดงาน ---
-
-        // เปิด Modal และโหลดข้อมูลตั้งต้น
         window.openCloseModal = function(jobId, productStr) {
             document.getElementById('modal-job-id').value = jobId;
             document.getElementById('modal-product-str').value = productStr;
@@ -554,7 +633,6 @@
             document.getElementById('modal-job-id-text').innerText = jobId;
             document.getElementById('modal-product-text').innerText = productStr;
             
-            // ล้างค่าเก่า
             document.getElementById('modal-fg-qty').value = '';
             document.getElementById('modal-ng-qty').value = '';
             document.getElementById('modal-fg-convert').innerText = '';
@@ -563,12 +641,10 @@
             document.getElementById('closeJobModal').classList.remove('hidden');
         };
 
-        // ปิด Modal
         window.closeModal = function() {
             document.getElementById('closeJobModal').classList.add('hidden');
         };
 
-        // คำนวณและแสดงข้อความแปลงหน่วย (kg ↔ ชิ้น) ใต้ช่องกรอก
         window.calculateModalQty = function(type) {
             const qtyInput = document.getElementById(`modal-${type}-qty`).value;
             const unit = document.getElementById(`modal-${type}-unit`).value;
@@ -592,7 +668,6 @@
             }
         };
 
-        // ยืนยันการปิดงานส่งข้อมูลเข้า Backend
         async function submitCloseJob(e) {
             e.preventDefault();
             
@@ -601,8 +676,6 @@
             btn.innerHTML = "⏳ กำลังบันทึก...";
 
             const jobId = document.getElementById('modal-job-id').value;
-            
-            // นำยอดมาจัดรูปแบบ เช่น "15.5 kg" หรือ "3000 ชิ้น"
             const fgQtyRaw = document.getElementById('modal-fg-qty').value;
             const fgUnit = document.getElementById('modal-fg-unit').value;
             const fgQtyFinal = fgQtyRaw ? `${fgQtyRaw} ${fgUnit}` : `0 ${fgUnit}`;
@@ -619,8 +692,8 @@
                         jobId: jobId,
                         status: 'Completed',
                         closedBy: currentUser.name || currentUser.username,
-                        fgQty: fgQtyFinal, // ยอด FG ที่กรอก
-                        ngQty: ngQtyFinal  // ยอด NG ที่กรอก
+                        fgQty: fgQtyFinal, 
+                        ngQty: ngQtyFinal  
                     })
                 });
                 const result = await res.json();
