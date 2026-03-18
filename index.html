@@ -137,7 +137,7 @@
                 <h2 class="text-lg font-bold text-gray-800">📋 รายการงานรอ Sort (Pending)</h2>
                 
                 <div class="flex w-full md:w-auto gap-2">
-                    <!-- ช่องค้นหาข้อมูลแบบ Fuzzy -->
+                    <!-- ช่องค้นหาข้อมูลอัจฉริยะ -->
                     <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
                     
                     <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
@@ -546,20 +546,16 @@
             renderTable();
         };
 
-        function fuzzyMatch(pattern, str) {
+        // เปลี่ยนอัลกอริทึมจาก Fuzzy เป็น Tokenized Search (ค้นหาแบบบังคับมีทุกคำ)
+        // ทำให้การค้นหาตัวเลขหรือปริมาณมีความแม่นยำสูง ไม่มั่วเอาตัวเลขหัวท้ายมาผสมกัน
+        function smartSearch(pattern, str) {
             if (!pattern) return true;
-            pattern = pattern.toLowerCase().replace(/\s/g, ''); 
+            // แยกคำค้นหาด้วยช่องว่าง (เช่น "16A 500" จะกลายเป็น ["16a", "500"])
+            const terms = pattern.toLowerCase().trim().split(/\s+/);
             str = str.toLowerCase();
-            let patternIdx = 0;
-            let strIdx = 0;
             
-            while (patternIdx < pattern.length && strIdx < str.length) {
-                if (pattern[patternIdx] === str[strIdx]) {
-                    patternIdx++;
-                }
-                strIdx++;
-            }
-            return patternIdx === pattern.length;
+            // เช็คว่า "ทุกคำ" ที่ถูกแยกออกมา ต้องมีอยู่ในข้อความ str อย่างครบถ้วน
+            return terms.every(term => str.includes(term));
         }
 
         // --- เรนเดอร์ตารางและสรุปยอดรวม (Breakdown) ---
@@ -575,9 +571,15 @@
                 }
                 const qtyInfo = parseQuantity(job.qty, model);
                 
-                // เพิ่มข้อมูลน้ำหนัก (kg) และ จำนวน (pcs) เพื่อให้รองรับการค้นหา
-                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${qtyInfo.kg.toFixed(2)}kg ${qtyInfo.pcs}ชิ้น`;
-                return fuzzyMatch(searchInput, searchString);
+                // นำตัวเลขน้ำหนัก/ชิ้นมาแปลงเป็น string เพื่อให้ค้นหาได้ตรงตัว
+                const kgStr = qtyInfo.kg.toFixed(2);
+                const pcsStr = qtyInfo.pcs.toString();
+
+                // สร้างข้อความรวมสำหรับใช้เป็นเป้าค้นหา (Search String)
+                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`;
+                
+                // เรียกใช้ Smart Search แทน Fuzzy แบบเดิม
+                return smartSearch(searchInput, searchString);
             });
 
             if (jobsToRender.length === 0) {
