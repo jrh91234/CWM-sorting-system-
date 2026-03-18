@@ -114,11 +114,17 @@
 
         <!-- Table Section -->
         <div class="bg-white rounded-xl shadow-md p-6">
-            <div class="flex justify-between items-center border-b pb-2 mb-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-3 mb-4 gap-3">
                 <h2 class="text-lg font-bold text-gray-800">📋 รายการงานรอ Sort (Pending)</h2>
-                <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded transition-colors">
-                    🔄 รีเฟรชข้อมูล
-                </button>
+                
+                <div class="flex w-full md:w-auto gap-2">
+                    <!-- เพิ่มช่องค้นหาข้อมูลแบบ Fuzzy -->
+                    <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    
+                    <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
+                        🔄 รีเฟรช
+                    </button>
+                </div>
             </div>
             
             <div class="overflow-x-auto">
@@ -443,17 +449,52 @@
             renderTable();
         };
 
+        // --- เพิ่มฟังก์ชันค้นหา (Fuzzy Search) ---
+        window.filterJobs = function() {
+            renderTable();
+        };
+
+        // อัลกอริทึม Fuzzy Match (เช็คว่าตัวอักษรค้นหามีอยู่ในข้อความตามลำดับหรือไม่ โดยไม่จำเป็นต้องติดกัน)
+        function fuzzyMatch(pattern, str) {
+            if (!pattern) return true;
+            pattern = pattern.toLowerCase().replace(/\s/g, ''); // เอาช่องว่างออกตอนเช็คแพทเทิร์น
+            str = str.toLowerCase();
+            let patternIdx = 0;
+            let strIdx = 0;
+            
+            while (patternIdx < pattern.length && strIdx < str.length) {
+                if (pattern[patternIdx] === str[strIdx]) {
+                    patternIdx++;
+                }
+                strIdx++;
+            }
+            return patternIdx === pattern.length;
+        }
+
         function renderTable() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
+            const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
             
-            if (allPendingJobs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีงานค้าง Sort</td></tr>';
+            // กรองข้อมูลด้วย Fuzzy Search ก่อนนำไปแสดง
+            let jobsToRender = allPendingJobs.filter(job => {
+                // นำข้อความที่ต้องการให้ค้นหาได้มารวมเป็นก้อนเดียวกัน (รหัสงาน, วันที่, สินค้า, อาการ, หมายเหตุ, ผู้แจ้ง)
+                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder}`;
+                return fuzzyMatch(searchInput, searchString);
+            });
+
+            if (jobsToRender.length === 0) {
+                if(searchInput !== '') {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีงานค้าง Sort</td></tr>';
+                }
                 tfoot.classList.add('hidden');
                 return;
             }
 
-            allPendingJobs.sort((a, b) => {
+            // เรียงลำดับข้อมูลที่ถูกกรองมาแล้ว
+            jobsToRender.sort((a, b) => {
                 let valA = a[currentSort.field] || '';
                 let valB = b[currentSort.field] || '';
                 if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
@@ -465,7 +506,7 @@
             let totalPcs = 0;
             let totalKg = 0;
 
-            allPendingJobs.forEach(job => {
+            jobsToRender.forEach(job => {
                 const qtyInfo = parseQuantity(job.qty, job.product);
                 totalPcs += qtyInfo.pcs;
                 totalKg += qtyInfo.kg;
