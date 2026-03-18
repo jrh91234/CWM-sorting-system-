@@ -138,7 +138,7 @@
                 
                 <div class="flex w-full md:w-auto gap-2">
                     <!-- ช่องค้นหาข้อมูลแบบ Fuzzy -->
-                    <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
                     
                     <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
                         🔄 รีเฟรช
@@ -569,7 +569,14 @@
             const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
             
             let jobsToRender = allPendingJobs.filter(job => {
-                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder}`;
+                let model = job.product;
+                if (job.product.includes(" : ")) {
+                    model = job.product.split(" : ")[1].trim();
+                }
+                const qtyInfo = parseQuantity(job.qty, model);
+                
+                // เพิ่มข้อมูลน้ำหนัก (kg) และ จำนวน (pcs) เพื่อให้รองรับการค้นหา
+                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${qtyInfo.kg.toFixed(2)}kg ${qtyInfo.pcs}ชิ้น`;
                 return fuzzyMatch(searchInput, searchString);
             });
 
