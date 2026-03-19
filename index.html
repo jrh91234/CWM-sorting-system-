@@ -11,16 +11,25 @@
     
     <style>
         body { font-family: 'Sarabun', sans-serif; }
-        .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        .loader { border-top-color: #3498db; animation: spinner 1.5s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .sortable-header { cursor: pointer; user-select: none; }
-        .sortable-header:hover { background-color: #e2e8f0; }
         
         /* สไตล์ Scrollbar เล็กสำหรับกล่องสรุป */
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        /* สไตล์สำหรับ Tab */
+        .tab-btn { transition: all 0.3s ease; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom: 2px solid #2563eb; color: #1e3a8a; font-weight: bold; background-color: #eff6ff; }
+        
+        /* สไตล์สำหรับ Status Badge */
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; display: inline-block; margin-top: 4px; }
+        .status-Pending { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+        .status-WaitQC { background-color: #fef08a; color: #9a3412; border: 1px solid #fde047; }
+        .status-Rejected { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .status-Completed { background-color: #dcfce7; color: #166534; border: 1px solid #86efac; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -131,54 +140,87 @@
             </form>
         </div>
 
-        <!-- Table Section -->
-        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-3 mb-4 gap-3">
-                <h2 class="text-lg font-bold text-gray-800">📋 รายการงานรอ Sort (Pending)</h2>
-                
-                <div class="flex w-full md:w-auto gap-2">
-                    <!-- ช่องค้นหาข้อมูลอัจฉริยะ -->
-                    <input type="text" id="searchInput" oninput="filterJobs()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    
-                    <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
-                        🔄 รีเฟรช
-                    </button>
-                </div>
-            </div>
+        <!-- Table Section with TABS -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse mb-4">
-                    <thead>
-                        <tr class="bg-gray-50 text-gray-600 text-sm uppercase">
-                            <th class="p-3 border-b">รหัสงาน</th>
-                            <th class="p-3 border-b sortable-header transition-colors group" onclick="toggleSort('date')">
-                                <div class="flex items-center justify-between">
-                                    วันที่แจ้ง <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
-                                </div>
-                            </th>
-                            <th class="p-3 border-b">รุ่นสินค้า</th>
-                            <th class="p-3 border-b">อาการ (Symptom)</th>
-                            <th class="p-3 border-b text-right">จำนวน</th>
-                            <th class="p-3 border-b">ผู้แจ้ง</th>
-                            <th class="p-3 border-b text-center">จัดการ</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sort-table-body">
-                        <tr><td colspan="7" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
-                    </tbody>
-                    <tfoot id="sort-table-foot" class="bg-blue-50 hidden">
-                        <!-- สรุปยอดรวมจะถูกสร้างด้วย JS (ปรับใหม่เป็น Breakdown) -->
-                    </tfoot>
-                </table>
+            <!-- Tabs Header -->
+            <div class="flex border-b bg-gray-50 px-2 pt-2 gap-1 overflow-x-auto" id="tabs-container">
+                <button onclick="switchTab('prod')" id="tab-prod" class="tab-btn active px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap">
+                    📦 งานรอ Sort (Production)
+                </button>
+                <button onclick="switchTab('qc')" id="tab-qc" class="tab-btn hidden px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap flex items-center gap-2">
+                    🔬 กล่องข้อความตรวจงาน (QC Inbox) 
+                    <span id="qc-badge" class="bg-red-500 text-white rounded-full px-2 py-0.5 text-xs hidden">0</span>
+                </button>
+            </div>
+
+            <div class="p-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 mb-4 gap-3 border-b">
+                    <h2 class="text-lg font-bold text-gray-800" id="table-title">📋 รายการงานรอ Sort</h2>
+                    
+                    <div class="flex w-full md:w-auto gap-2">
+                        <!-- ช่องค้นหาข้อมูลอัจฉริยะ -->
+                        <input type="text" id="searchInput" oninput="renderTable()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        
+                        <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap font-bold border">
+                            🔄 รีเฟรช
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse mb-4">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 text-sm uppercase">
+                                <th class="p-3 border-b">รหัสงาน</th>
+                                <th class="p-3 border-b sortable-header transition-colors group" onclick="toggleSort('date')">
+                                    <div class="flex items-center justify-between">
+                                        วันที่แจ้ง <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
+                                    </div>
+                                </th>
+                                <th class="p-3 border-b">รุ่นสินค้า</th>
+                                <th class="p-3 border-b">อาการ (Symptom) / หมายเหตุ</th>
+                                <th class="p-3 border-b text-right">จำนวน</th>
+                                <th class="p-3 border-b text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sort-table-body">
+                            <tr><td colspan="6" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                        </tbody>
+                        <tfoot id="sort-table-foot" class="bg-blue-50 hidden">
+                            <!-- สรุปยอดรวมจะถูกสร้างด้วย JS -->
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- ==================== MODALS ==================== -->
 
+    <!-- Modal จัดการขั้นตอน (Stage) -->
+    <div id="manageStageModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-800">⚙️ จัดการตัวเลือกขั้นตอน</h3>
+                <button type="button" onclick="closeStageModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="new-stage-input" placeholder="พิมพ์ตัวเลือกใหม่..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <button type="button" onclick="addStage()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold transition">+</button>
+            </div>
+            
+            <p class="text-xs text-gray-500 mb-2 font-bold">รายการตัวเลือกปัจจุบัน:</p>
+            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50 custom-scrollbar">
+                <!-- รายการจะถูกสร้างด้วย JS -->
+            </ul>
+        </div>
+    </div>
+
     <!-- Modal แก้ไขข้อมูล (Edit Data) -->
     <div id="editJobModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6 mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div class="flex justify-between items-center border-b pb-3 mb-4">
                 <h3 class="text-lg font-bold text-gray-800">✏️ แก้ไขข้อมูลงานรอ Sort</h3>
                 <button type="button" onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
@@ -254,7 +296,7 @@
                 </div>
 
                 <!-- ปุ่ม Submit Edit -->
-                <div class="md:col-span-2 lg:col-span-4 flex justify-end gap-3 mt-4">
+                <div class="md:col-span-2 lg:col-span-4 flex justify-end gap-3 mt-4 border-t pt-4">
                     <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">ยกเลิก</button>
                     <button type="submit" id="btn-submit-edit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-sm">
                         💾 บันทึกการแก้ไข
@@ -264,36 +306,15 @@
         </div>
     </div>
 
-
-    <!-- Modal จัดการขั้นตอน (Stage) -->
-    <div id="manageStageModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
-            <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 class="text-lg font-bold text-gray-800">⚙️ จัดการตัวเลือกขั้นตอน</h3>
-                <button type="button" onclick="closeStageModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
-            </div>
-            
-            <div class="flex gap-2 mb-4">
-                <input type="text" id="new-stage-input" placeholder="พิมพ์ตัวเลือกใหม่..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                <button type="button" onclick="addStage()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold transition">+</button>
-            </div>
-            
-            <p class="text-xs text-gray-500 mb-2 font-bold">รายการตัวเลือกปัจจุบัน:</p>
-            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50 custom-scrollbar">
-                <!-- รายการจะถูกสร้างด้วย JS -->
-            </ul>
-        </div>
-    </div>
-
-    <!-- Modal สำหรับปิดงาน Sort -->
+    <!-- Modal สำหรับ Production: ปิดงานส่งให้ QC -->
     <div id="closeJobModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
             <div class="flex justify-between items-center border-b pb-3 mb-4">
-                <h3 class="text-lg font-bold text-gray-800">✅ ยืนยันปิดงาน Sort</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+                <h3 class="text-lg font-bold text-gray-800">✅ ปิดงานส่งให้ QC ตรวจสอบ</h3>
+                <button type="button" onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
             </div>
             
-            <form id="closeJobForm" onsubmit="submitCloseJob(event)">
+            <form id="closeJobForm" onsubmit="submitToQC(event)">
                 <input type="hidden" id="modal-job-id">
                 <input type="hidden" id="modal-product-str">
                 
@@ -330,21 +351,63 @@
 
                 <div class="flex justify-end gap-3 mt-4">
                     <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">ยกเลิก</button>
-                    <button type="submit" id="btn-submit-close" class="px-5 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow">✔ บันทึกปิดงาน</button>
+                    <button type="submit" id="btn-submit-qc" class="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition shadow">📤 ส่งให้ QC ตรวจ</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- Modal สำหรับ QC: ตีกลับงาน (Reject) -->
+    <div id="qcRejectModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4 border-t-4 border-red-500">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-red-700">🔴 ตีกลับงานให้ Production</h3>
+                <button type="button" onclick="closeRejectModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <form id="rejectForm" onsubmit="submitReject(event)">
+                <input type="hidden" id="reject-job-id">
+                
+                <p class="text-sm mb-3 font-bold text-gray-700">เลือกส่วนที่ต้องการตีกลับให้นับ/คัดใหม่:</p>
+                
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <label class="flex items-center gap-2 bg-gray-50 p-3 rounded-lg border cursor-pointer hover:bg-gray-100 transition">
+                        <input type="checkbox" id="rej-fg" value="FG" class="w-5 h-5 text-red-600 rounded"> 
+                        <span class="font-bold text-green-700">ยอด FG</span>
+                    </label>
+                    <label class="flex items-center gap-2 bg-gray-50 p-3 rounded-lg border cursor-pointer hover:bg-gray-100 transition">
+                        <input type="checkbox" id="rej-ng" value="NG" class="w-5 h-5 text-red-600 rounded"> 
+                        <span class="font-bold text-red-700">ยอด NG</span>
+                    </label>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">เหตุผลที่ตีกลับ (จำเป็นต้องระบุ):</label>
+                    <textarea id="reject-reason" required rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500" placeholder="เช่น พบรอยขีดข่วนปนในกล่อง FG..."></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-4 pt-2 border-t border-gray-100">
+                    <button type="button" onclick="closeRejectModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" id="btn-submit-reject" class="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition shadow">💥 ยืนยันการตีกลับ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
     <!-- เพิ่ม Flatpickr JS สำหรับสร้าง Time Picker 24H -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <script>
+        // ==========================================
+        // ส่วนของการตั้งค่าตัวแปรและเริ่มต้นระบบ
+        // ==========================================
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyt3Bf_2h21BBcCHQSjizowy_kD5vsoUqgaC_YmVjLuQybJO1BBRt3eaSM0PuKEFfvruw/exec";
         let currentUser = null;
         let globalMachineMapping = {}; 
         let allPendingJobs = []; 
-        let currentSort = { field: 'date', order: 'desc' }; 
+        let activeTab = 'prod'; // 'prod' หรือ 'qc'
+        
         let timePickerInstance = null;
         let timePickerEditInstance = null;
 
@@ -354,31 +417,171 @@
 
         window.onload = () => {
             const savedUser = localStorage.getItem('CWM_AUTH_USER');
-            if (!savedUser) {
+            if (!savedUser) { 
                 alert("กรุณาเข้าสู่ระบบผ่านหน้าหลักก่อนใช้งาน");
-                window.location.href = 'index.html';
-                return;
+                window.location.href = 'index.html'; 
+                return; 
             }
 
             currentUser = JSON.parse(savedUser);
             const allowedRoles = ['Admin', 'Production', 'QC'];
-            
-            if (!allowedRoles.includes(currentUser.role)) {
-                alert(`คุณ (${currentUser.role}) ไม่มีสิทธิ์เข้าถึงหน้านี้ อนุญาตเฉพาะ Admin, Production และ QC`);
-                window.location.href = 'index.html';
-                return;
+            if (!allowedRoles.includes(currentUser.role)) { 
+                alert(`คุณ (${currentUser.role}) ไม่มีสิทธิ์เข้าถึงหน้านี้`);
+                window.location.href = 'index.html'; 
+                return; 
             }
 
-            document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name || currentUser.username}</span> (${currentUser.role})`;
+            document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name}</span> (${currentUser.role})`;
             
-            initTimePicker();
-            setDefaultDateTime();
+            // แสดงแท็บ QC ถ้าเป็น QC หรือ Admin
+            if (currentUser.role === 'QC' || currentUser.role === 'Admin') {
+                document.getElementById('tab-qc').classList.remove('hidden');
+                if(currentUser.role === 'QC') switchTab('qc');
+            }
+
+            initTimePicker(); 
+            setDefaultDateTime(); 
             renderStageDropdown(); 
-            fetchOptions();
+            fetchOptions(); 
             loadSortJobs();
         };
 
-        // --- ระบบจัดการขั้นตอน (Stage Management) ---
+        // ==========================================
+        // ฟังก์ชันระบบพื้นฐาน (UI & Tab)
+        // ==========================================
+        function switchTab(tab) {
+            activeTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            document.getElementById('table-title').innerText = tab === 'prod' ? '📦 งานรอ Sort / งานตีกลับ' : '🔬 กล่องข้อความตรวจสอบ (QC Inbox)';
+            renderTable();
+        }
+
+        function initTimePicker() {
+            timePickerInstance = flatpickr("#sort-time", { 
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true, defaultDate: new Date() 
+            });
+            timePickerEditInstance = flatpickr("#edit-sort-time", { 
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true 
+            });
+        }
+
+        function setDefaultDateTime() {
+            const today = new Date(); 
+            const yyyy = today.getFullYear(); 
+            const mm = String(today.getMonth() + 1).padStart(2, '0'); 
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('sort-date').value = `${yyyy}-${mm}-${dd}`;
+            
+            if(timePickerInstance) {
+                timePickerInstance.setDate(new Date());
+            }
+        }
+
+        async function fetchOptions() {
+            try {
+                const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS"); 
+                const data = await res.json();
+                
+                const selectSymptom = document.getElementById('sort-symptom');
+                const editSymptom = document.getElementById('edit-sort-symptom');
+                selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                editSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                
+                if (data.ngTypes && data.ngTypes.length > 0) {
+                    data.ngTypes.forEach(symptom => {
+                        selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
+                        editSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
+                    });
+                }
+
+                const selectMachine = document.getElementById('sort-machine');
+                const editMachine = document.getElementById('edit-sort-machine');
+                selectMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
+                editMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
+                
+                if (data.machineMapping) {
+                    globalMachineMapping = data.machineMapping; 
+                    let machineList = Object.keys(data.machineMapping).sort();
+                    
+                    if (machineList.length === 0) {
+                        machineList = Array.from({length: 16}, (_, i) => `CWM-${String(i+1).padStart(2,'0')}`);
+                    }
+                    
+                    machineList.forEach(m => {
+                        selectMachine.innerHTML += `<option value="${m}">${m}</option>`;
+                        editMachine.innerHTML += `<option value="${m}">${m}</option>`;
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to load options", err);
+            }
+        }
+
+        function onMachineChange(macId, prodId) {
+            const mac = document.getElementById(macId).value;
+            const modSelect = document.getElementById(prodId);
+            
+            if (mac && globalMachineMapping[mac] && globalMachineMapping[mac] !== 'Unassigned') {
+                modSelect.value = globalMachineMapping[mac]; 
+            } else {
+                modSelect.value = ""; 
+            }
+        }
+
+        // ==========================================
+        // ฟังก์ชันคำนวณน้ำหนักและกรองข้อมูล
+        // ==========================================
+        function getWeightPerPc(productStr) {
+            if (!productStr) return 0.003; 
+            if (productStr.includes("10A")) return 0.00228; 
+            if (productStr.includes("16A")) return 0.00279; 
+            if (productStr.includes("20A")) return 0.00357; 
+            if (productStr.includes("25/32A")) return 0.005335; 
+            return 0.003;
+        }
+
+        function parseQuantity(qtyStr, productStr) {
+            const val = parseFloat(qtyStr); 
+            if (isNaN(val)) return { pcs: 0, kg: 0, display: qtyStr };
+            
+            const wpp = getWeightPerPc(productStr);
+            if (qtyStr.toLowerCase().includes('kg')) {
+                return { 
+                    pcs: Math.round(val/wpp), 
+                    kg: val, 
+                    display: `<span class="font-bold text-gray-800">${val.toFixed(2)} kg</span><br><span class="text-xs text-gray-500">(${Math.round(val/wpp).toLocaleString()} ชิ้น)</span>` 
+                };
+            } else {
+                return { 
+                    pcs: val, 
+                    kg: val*wpp, 
+                    display: `<span class="font-bold text-gray-800">${val.toLocaleString()} ชิ้น</span><br><span class="text-xs text-gray-500">(${(val*wpp).toFixed(2)} kg)</span>` 
+                };
+            }
+        }
+
+        function smartSearch(pattern, str) {
+            if (!pattern) return true; 
+            const terms = pattern.toLowerCase().trim().split(/\s+/); 
+            return terms.every(t => str.toLowerCase().includes(t));
+        }
+
+        function updateQCBadge() {
+            const qcCount = allPendingJobs.filter(j => j.status === 'Wait QC').length;
+            const badge = document.getElementById('qc-badge');
+            if (qcCount > 0) { 
+                badge.innerText = qcCount; 
+                badge.classList.remove('hidden'); 
+            } else { 
+                badge.classList.add('hidden'); 
+            }
+        }
+
+        // ==========================================
+        // ระบบจัดการขั้นตอน (Stage Management)
+        // ==========================================
         function renderStageDropdown() {
             const select = document.getElementById('sort-stage');
             const editSelect = document.getElementById('edit-sort-stage');
@@ -436,101 +639,18 @@
             }
         }
 
-        // --- ระบบอื่นๆ ---
-        function initTimePicker() {
-            timePickerInstance = flatpickr("#sort-time", {
-                enableTime: true,
-                noCalendar: true,
-                dateFormat: "H:i",
-                time_24hr: true,
-                disableMobile: true,
-                defaultDate: new Date()
-            });
-
-            timePickerEditInstance = flatpickr("#edit-sort-time", {
-                enableTime: true,
-                noCalendar: true,
-                dateFormat: "H:i",
-                time_24hr: true,
-                disableMobile: true
-            });
-        }
-
-        function setDefaultDateTime() {
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            document.getElementById('sort-date').value = `${yyyy}-${mm}-${dd}`;
-            
-            if(timePickerInstance) {
-                timePickerInstance.setDate(new Date());
-            }
-        }
-
-        async function fetchOptions() {
-            try {
-                const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
-                const data = await res.json();
-                
-                const selectSymptom = document.getElementById('sort-symptom');
-                const editSymptom = document.getElementById('edit-sort-symptom');
-                selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
-                editSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
-                
-                if (data.ngTypes && data.ngTypes.length > 0) {
-                    data.ngTypes.forEach(symptom => {
-                        selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
-                        editSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
-                    });
-                }
-
-                const selectMachine = document.getElementById('sort-machine');
-                const editMachine = document.getElementById('edit-sort-machine');
-                selectMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
-                editMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
-                
-                if (data.machineMapping) {
-                    globalMachineMapping = data.machineMapping;
-                    let machineList = Object.keys(data.machineMapping).sort();
-                    
-                    if (machineList.length === 0) {
-                        machineList = Array.from({length: 16}, (_, i) => `CWM-${String(i+1).padStart(2,'0')}`);
-                    }
-                    
-                    machineList.forEach(m => {
-                        selectMachine.innerHTML += `<option value="${m}">${m}</option>`;
-                        editMachine.innerHTML += `<option value="${m}">${m}</option>`;
-                    });
-                }
-            } catch (err) {
-                console.error("Failed to load options", err);
-                document.getElementById('sort-symptom').innerHTML = '<option value="">-- โหลดอาการเสียไม่สำเร็จ --</option>';
-                document.getElementById('sort-machine').innerHTML = '<option value="">(ไม่สามารถโหลดข้อมูลเครื่องจักรได้)</option>';
-            }
-        }
-
-        window.onMachineChange = function(macId, prodId) {
-            const mac = document.getElementById(macId).value;
-            const modSelect = document.getElementById(prodId);
-            
-            if (mac && globalMachineMapping[mac] && globalMachineMapping[mac] !== 'Unassigned') {
-                modSelect.value = globalMachineMapping[mac]; 
-            } else {
-                modSelect.value = ""; 
-            }
-        };
-
-        // บันทึกงานรอ Sort ใหม่
+        // ==========================================
+        // การบันทึกและดึงข้อมูลหลัก (API)
+        // ==========================================
         async function submitSortJob(e) {
-            e.preventDefault();
-            const btn = document.getElementById('btn-save-sort');
-            btn.disabled = true;
+            e.preventDefault(); 
+            const btn = document.getElementById('btn-save-sort'); 
+            btn.disabled = true; 
             btn.innerHTML = "⏳ กำลังบันทึก...";
 
-            const dateVal = document.getElementById('sort-date').value;
+            const dateVal = document.getElementById('sort-date').value; 
             const timeVal = document.getElementById('sort-time').value;
-            const machineVal = document.getElementById('sort-machine').value;
+            const machineVal = document.getElementById('sort-machine').value; 
             const productVal = document.getElementById('sort-product').value;
             const stageVal = document.getElementById('sort-stage').value;
             const symptomVal = document.getElementById('sort-symptom').value;
@@ -542,27 +662,23 @@
                 return;
             }
 
-            const qtyVal = document.getElementById('sort-qty').value;
-            const unitVal = document.getElementById('sort-unit').value;
-            let remarkVal = document.getElementById('sort-remark').value;
-
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
-            const finalQty = `${qtyVal} ${unitVal}`; 
-            const finalDate = `${dateVal} ${timeVal}`; 
+            const finalQty = `${document.getElementById('sort-qty').value} ${document.getElementById('sort-unit').value}`;
+            const finalDate = `${dateVal} ${timeVal}`;
             
+            // Check duplicate
             const isDuplicate = allPendingJobs.some(job => {
-                return job.date === finalDate && 
-                       job.product === finalProduct && 
-                       job.qty === finalQty;
+                return job.date === finalDate && job.product === finalProduct && job.qty === finalQty;
             });
 
             if (isDuplicate) {
-                alert(`⚠️ ตรวจพบข้อมูลซ้ำ!\nมีรายการนี้รอ Sort อยู่ในระบบแล้ว\n(วันที่: ${finalDate} | เครื่อง/รุ่น: ${finalProduct} | จำนวน: ${finalQty})\n\nกรุณาตรวจสอบข้อมูลอีกครั้ง`);
+                alert(`⚠️ ตรวจพบข้อมูลซ้ำ!\nมีรายการนี้รอ Sort อยู่ในระบบแล้ว`);
                 btn.disabled = false;
                 btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
                 return;
             }
 
+            const remarkVal = document.getElementById('sort-remark').value;
             const finalRemark = `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim();
 
             const payload = {
@@ -586,8 +702,8 @@
                     alert("✅ บันทึกงานรอ Sort สำเร็จ");
                     document.getElementById('sortForm').reset();
                     setDefaultDateTime(); 
-                    document.getElementById('sort-unit').value = 'kg'; 
-                    document.getElementById('sort-stage').value = ''; 
+                    document.getElementById('sort-unit').value = 'kg';
+                    document.getElementById('sort-stage').value = '';
                     loadSortJobs(); 
                 } else {
                     alert("❌ เกิดข้อผิดพลาด: " + result.message);
@@ -600,11 +716,11 @@
             }
         }
 
-        // โหลดข้อมูล
         async function loadSortJobs() {
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
+            
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
             tfoot.classList.add('hidden');
 
             try {
@@ -613,212 +729,37 @@
                 
                 if (result.status === 'success') {
                     allPendingJobs = result.data;
+                    updateQCBadge();
                     renderTable();
                 }
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
             }
         }
 
-        // ===================== ส่วนของการแก้ไขข้อมูล (EDIT) =====================
-        window.openEditModal = function(jobId) {
-            const job = allPendingJobs.find(j => j.jobId === jobId);
-            if (!job) return alert("ไม่พบข้อมูลที่ต้องการแก้ไข");
-
-            document.getElementById('edit-job-id').value = job.jobId;
-
-            // แยก Date/Time
-            let dDate = "", dTime = "";
-            if (job.date && job.date.includes(" ")) {
-                const parts = job.date.split(" ");
-                dDate = parts[0];
-                dTime = parts[1];
-            } else {
-                dDate = job.date;
-            }
-            document.getElementById('edit-sort-date').value = dDate;
-            if (timePickerEditInstance && dTime) {
-                timePickerEditInstance.setDate(dTime);
-            }
-
-            // แยก Machine / Product
-            let machine = "", product = job.product;
-            if (job.product && job.product.includes(" : ")) {
-                const pParts = job.product.split(" : ");
-                machine = pParts[0].trim();
-                product = pParts[1].trim();
-            }
-            document.getElementById('edit-sort-machine').value = machine;
-            document.getElementById('edit-sort-product').value = product;
-
-            // แยก Stage / Remark
-            let stage = "", remark = job.remark || "";
-            const remarkMatch = remark.match(/^\[พบที่:\s*(.+?)\]\s*(.*)$/);
-            if (remarkMatch) {
-                stage = remarkMatch[1];
-                remark = remarkMatch[2];
-            }
-            
-            // เช็คว่ามีตัวเลือก Stage ในระบบหรือไม่ ถ้าไม่มีให้เพิ่มแบบชั่วคราว
-            const stageSelect = document.getElementById('edit-sort-stage');
-            let hasStageOption = Array.from(stageSelect.options).some(opt => opt.value === stage);
-            if (stage && !hasStageOption) {
-                stageSelect.innerHTML += `<option value="${stage}">${stage}</option>`;
-            }
-            stageSelect.value = stage;
-            document.getElementById('edit-sort-remark').value = remark;
-
-            // อาการเสีย
-            const symptomSelect = document.getElementById('edit-sort-symptom');
-            let hasSympOption = Array.from(symptomSelect.options).some(opt => opt.value === job.symptom);
-            if (job.symptom && !hasSympOption) {
-                symptomSelect.innerHTML += `<option value="${job.symptom}">${job.symptom}</option>`;
-            }
-            symptomSelect.value = job.symptom;
-
-            // จำนวนและหน่วย
-            let qty = "", unit = "kg";
-            if (job.qty && job.qty.includes(" ")) {
-                const qParts = job.qty.split(" ");
-                qty = qParts[0];
-                unit = qParts[1];
-            } else {
-                qty = parseFloat(job.qty) || "";
-                if (job.qty && job.qty.includes("ชิ้น")) unit = "ชิ้น";
-            }
-            document.getElementById('edit-sort-qty').value = qty;
-            document.getElementById('edit-sort-unit').value = unit;
-
-            document.getElementById('editJobModal').classList.remove('hidden');
-        };
-
-        window.closeEditModal = function() {
-            document.getElementById('editJobModal').classList.add('hidden');
-        };
-
-        window.submitEditJob = async function(e) {
-            e.preventDefault();
-            const btn = document.getElementById('btn-submit-edit');
-            btn.disabled = true;
-            btn.innerHTML = "⏳ กำลังบันทึก...";
-
-            const jobId = document.getElementById('edit-job-id').value;
-            const dateVal = document.getElementById('edit-sort-date').value;
-            const timeVal = document.getElementById('edit-sort-time').value;
-            const machineVal = document.getElementById('edit-sort-machine').value;
-            const productVal = document.getElementById('edit-sort-product').value;
-            const stageVal = document.getElementById('edit-sort-stage').value;
-            const symptomVal = document.getElementById('edit-sort-symptom').value;
-            const qtyVal = document.getElementById('edit-sort-qty').value;
-            const unitVal = document.getElementById('edit-sort-unit').value;
-            let remarkVal = document.getElementById('edit-sort-remark').value;
-
-            const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
-            const finalQty = `${qtyVal} ${unitVal}`; 
-            const finalDate = `${dateVal} ${timeVal}`; 
-            const finalRemark = stageVal ? `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim() : remarkVal.trim();
-
-            const payload = {
-                action: 'EDIT_SORTING',
-                jobId: jobId,
-                data: {
-                    date: finalDate,
-                    product: finalProduct,
-                    symptom: symptomVal,
-                    qty: finalQty,
-                    remark: finalRemark,
-                    recorder: currentUser.name || currentUser.username
-                }
-            };
-
-            try {
-                const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
-                const result = await res.json();
-                
-                if (result.status === 'success') {
-                    alert("✅ บันทึกการแก้ไขสำเร็จ");
-                    closeEditModal();
-                    loadSortJobs(); 
-                } else {
-                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
-                }
-            } catch (err) {
-                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = "💾 บันทึกการแก้ไข";
-            }
-        };
-
-        // ====================================================================
-
-        function getWeightPerPc(productStr) {
-            if (!productStr) return 0.003;
-            if (productStr.includes("10A")) return 0.00228;
-            if (productStr.includes("16A")) return 0.00279;
-            if (productStr.includes("20A")) return 0.00357;
-            if (productStr.includes("25/32A")) return 0.005335;
-            return 0.003;
-        }
-
-        function parseQuantity(qtyStr, productStr) {
-            const val = parseFloat(qtyStr);
-            if (isNaN(val)) return { pcs: 0, kg: 0, display: qtyStr };
-            
-            const isKg = qtyStr.toLowerCase().includes('kg');
-            const wpp = getWeightPerPc(productStr);
-            let pcs = 0, kg = 0;
-            
-            if (isKg) {
-                kg = val;
-                pcs = Math.round(kg / wpp);
-                return { 
-                    pcs: pcs, kg: kg, 
-                    display: `<span class="font-bold text-gray-800">${kg.toFixed(2)} kg</span><br><span class="text-xs text-gray-500 font-normal">(${pcs.toLocaleString()} ชิ้น)</span>` 
-                };
-            } else {
-                pcs = val;
-                kg = pcs * wpp;
-                return { 
-                    pcs: pcs, kg: kg, 
-                    display: `<span class="font-bold text-gray-800">${pcs.toLocaleString()} ชิ้น</span><br><span class="text-xs text-gray-500 font-normal">(${kg.toFixed(2)} kg)</span>` 
-                };
-            }
-        }
-
-        window.toggleSort = function(field) {
-            if (currentSort.field === field) {
-                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSort.field = field;
-                currentSort.order = 'desc';
-            }
-            
-            document.getElementById('sort-icon-date').innerText = currentSort.order === 'asc' ? '▲' : '▼';
-            renderTable();
-        };
-
-        window.filterJobs = function() {
-            renderTable();
-        };
-
-        function smartSearch(pattern, str) {
-            if (!pattern) return true;
-            const terms = pattern.toLowerCase().trim().split(/\s+/);
-            str = str.toLowerCase();
-            return terms.every(term => str.includes(term));
-        }
-
+        // ==========================================
+        // การแสดงผลตารางและการสรุปยอด (Breakdown)
+        // ==========================================
         function renderTable() {
-            const tbody = document.getElementById('sort-table-body');
+            const tbody = document.getElementById('sort-table-body'); 
             const tfoot = document.getElementById('sort-table-foot');
             const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
             
             let jobsToRender = allPendingJobs.filter(job => {
-                let model = job.product;
-                if (job.product.includes(" : ")) {
-                    model = job.product.split(" : ")[1].trim();
+                // เช็ค Tab
+                let showJob = false;
+                if (activeTab === 'prod') {
+                    showJob = (job.status === 'Pending' || job.status === 'Rejected');
+                } else if (activeTab === 'qc') {
+                    showJob = (job.status === 'Wait QC');
                 }
+
+                if (!showJob) return false;
+
+                // เช็คการค้นหา (Smart Search)
+                let model = job.product;
+                if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
+                
                 const qtyInfo = parseQuantity(job.qty, model);
                 const kgStr = qtyInfo.kg.toFixed(2);
                 const pcsStr = qtyInfo.pcs.toString();
@@ -828,22 +769,14 @@
             });
 
             if (jobsToRender.length === 0) {
-                if(searchInput !== '') {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
+                if (searchInput !== '') {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีงานค้าง Sort</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-green-600 font-bold">🎉 กล่องข้อความว่างเปล่า ไม่มีงานค้าง</td></tr>';
                 }
                 tfoot.classList.add('hidden');
                 return;
             }
-
-            jobsToRender.sort((a, b) => {
-                let valA = a[currentSort.field] || '';
-                let valB = b[currentSort.field] || '';
-                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
-                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
-                return 0;
-            });
 
             tbody.innerHTML = '';
             
@@ -875,31 +808,75 @@
                 breakdownMachine[machine].pcs += qtyInfo.pcs;
                 breakdownMachine[machine].kg += qtyInfo.kg;
 
+                // สร้างสถานะ
+                let statusBadge = `<span class="status-badge status-Pending">รอ Sort</span>`;
+                let fgNgDisplay = "";
+                
+                if (job.status === 'Wait QC') {
+                    statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
+                    fgNgDisplay = `
+                        <div class="mt-2 p-1.5 bg-yellow-50 text-xs rounded border border-yellow-200 text-left">
+                            <b class="text-gray-700">แจ้งยอดจัดคัด:</b><br>
+                            <span class="text-green-700 font-bold">FG: ${job.fgQty}</span> | 
+                            <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
+                        </div>`;
+                } else if (job.status === 'Rejected') {
+                    statusBadge = `<span class="status-badge status-Rejected">ตีกลับ/แก้ไข</span>`;
+                }
+
+                // ปุ่มจัดการ
+                let actionButtons = "";
+                if (activeTab === 'prod') {
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <button onclick="openEditModal('${job.jobId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded text-xs font-bold transition-colors border border-gray-300 shadow-sm w-full">
+                                ✏️ แก้ไขข้อมูล
+                            </button>
+                            <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 py-1.5 rounded text-xs font-bold transition-colors border border-blue-300 shadow-sm w-full">
+                                📤 ส่งยอด QC
+                            </button>
+                        </div>
+                    `;
+                } else if (activeTab === 'qc') {
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
+                                ✔ อนุมัติ (Pass)
+                            </button>
+                            <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
+                                ✖ ตีกลับ (Reject)
+                            </button>
+                        </div>
+                    `;
+                }
+
+                let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
+
                 tbody.innerHTML += `
                     <tr class="hover:bg-gray-50 border-b">
-                        <td class="p-3 text-xs font-mono text-gray-500">${job.jobId}</td>
-                        <td class="p-3 text-sm font-medium text-gray-800">${job.date}</td>
-                        <td class="p-3 text-sm font-bold text-blue-800">${job.product}</td>
-                        <td class="p-3 text-sm text-red-600">${job.symptom} <br><span class="text-xs text-gray-400">${job.remark || '-'}</span></td>
-                        <td class="p-3 text-sm text-right leading-tight">${qtyInfo.display}</td>
-                        <td class="p-3 text-sm">${job.recorder}</td>
-                        <td class="p-3 text-center">
-                            <div class="flex flex-col gap-2 justify-center items-center md:flex-row">
-                                <button onclick="openEditModal('${job.jobId}')" class="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1 rounded text-xs font-bold transition-colors border border-yellow-300 shadow-sm w-full md:w-auto">
-                                    ✏️ แก้ไข
-                                </button>
-                                <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded text-xs font-bold transition-colors border border-green-300 shadow-sm w-full md:w-auto">
-                                    ✔ ปิดงาน
-                                </button>
-                            </div>
+                        <td class="p-3 text-xs font-mono text-gray-500 align-top">
+                            ${job.jobId}<br>${statusBadge}
+                        </td>
+                        <td class="p-3 text-sm font-medium text-gray-800 align-top">${job.date}</td>
+                        <td class="p-3 text-sm font-bold text-blue-800 align-top">${job.product}</td>
+                        <td class="p-3 text-sm text-red-600 align-top">
+                            ${job.symptom}
+                            ${remarkHtml}
+                        </td>
+                        <td class="p-3 text-sm text-right leading-tight align-top">
+                            ${qtyInfo.display}
+                            ${fgNgDisplay}
+                        </td>
+                        <td class="p-3 text-center align-top">
+                            ${actionButtons}
                         </td>
                     </tr>
                 `;
             });
 
+            // สร้าง Tfoot Breakdown
             let modelHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
-            let modelKeys = Object.keys(breakdownModel).sort();
-            modelKeys.forEach(m => {
+            Object.keys(breakdownModel).sort().forEach(m => {
                 modelHtml += `
                     <li class="flex justify-between items-center border-b border-gray-100 pb-1">
                         <span class="font-semibold text-blue-900 truncate pr-2">${m}</span>
@@ -909,8 +886,7 @@
             modelHtml += '</ul>';
 
             let machineHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
-            let machineKeys = Object.keys(breakdownMachine).sort();
-            machineKeys.forEach(m => {
+            Object.keys(breakdownMachine).sort().forEach(m => {
                 machineHtml += `
                     <li class="flex justify-between items-center border-b border-gray-100 pb-1">
                         <span class="font-semibold text-gray-800">${m}</span>
@@ -921,25 +897,29 @@
 
             tfoot.innerHTML = `
                 <tr>
-                    <td colspan="7" class="p-4 bg-gray-50 border-t-2 border-blue-300">
+                    <td colspan="6" class="p-4 bg-gray-50 border-t-2 border-blue-300">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col justify-center items-center text-center">
-                                <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมงานรอ Sort ทั้งหมด</h4>
+                                <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมรายการที่แสดงทั้งหมด</h4>
                                 <div class="text-4xl font-extrabold text-blue-800 mb-1">${totalKg.toFixed(2)} <span class="text-xl">kg</span></div>
                                 <div class="text-lg text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">${totalPcs.toLocaleString()} ชิ้น</div>
                             </div>
+                            
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                                 <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">📦 แยกตามรุ่น (Model)</h4>
                                 <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
                                     ${modelHtml}
                                 </div>
                             </div>
+
                             <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
                                 <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">⚙️ แยกตามเครื่อง (Machine)</h4>
                                 <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
                                     ${machineHtml}
                                 </div>
                             </div>
+                            
                         </div>
                     </td>
                 </tr>
@@ -947,10 +927,12 @@
             tfoot.classList.remove('hidden');
         }
 
-        window.openCloseModal = function(jobId, productStr) {
+        // ==========================================
+        // Modal ปิดงาน / ส่งยอด (Production)
+        // ==========================================
+        function openCloseModal(jobId, productStr) {
             document.getElementById('modal-job-id').value = jobId;
             document.getElementById('modal-product-str').value = productStr;
-            
             document.getElementById('modal-job-id-text').innerText = jobId;
             document.getElementById('modal-product-text').innerText = productStr;
             
@@ -960,13 +942,13 @@
             document.getElementById('modal-ng-convert').innerText = '';
             
             document.getElementById('closeJobModal').classList.remove('hidden');
-        };
+        }
 
-        window.closeModal = function() {
+        function closeModal() {
             document.getElementById('closeJobModal').classList.add('hidden');
-        };
+        }
 
-        window.calculateModalQty = function(type) {
+        function calculateModalQty(type) {
             const qtyInput = document.getElementById(`modal-${type}-qty`).value;
             const unit = document.getElementById(`modal-${type}-unit`).value;
             const productStr = document.getElementById('modal-product-str').value;
@@ -987,14 +969,13 @@
                 const kg = val * wpp;
                 convertText.innerText = `≈ ${kg.toFixed(3)} kg`;
             }
-        };
+        }
 
-        async function submitCloseJob(e) {
+        async function submitToQC(e) {
             e.preventDefault();
-            
-            const btn = document.getElementById('btn-submit-close');
+            const btn = document.getElementById('btn-submit-qc');
             btn.disabled = true;
-            btn.innerHTML = "⏳ กำลังบันทึก...";
+            btn.innerHTML = "⏳ กำลังส่งข้อมูล...";
 
             const jobId = document.getElementById('modal-job-id').value;
             const fgQtyRaw = document.getElementById('modal-fg-qty').value;
@@ -1011,7 +992,7 @@
                     body: JSON.stringify({
                         action: 'UPDATE_SORTING',
                         jobId: jobId,
-                        status: 'Completed',
+                        status: 'Wait QC',
                         closedBy: currentUser.name || currentUser.username,
                         fgQty: fgQtyFinal, 
                         ngQty: ngQtyFinal  
@@ -1020,6 +1001,7 @@
                 const result = await res.json();
                 
                 if (result.status === 'success') {
+                    alert("ส่งยอดให้ QC ตรวจสอบเรียบร้อยแล้ว");
                     closeModal();
                     loadSortJobs(); 
                 } else {
@@ -1029,9 +1011,230 @@
                 alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = "✔ บันทึกปิดงาน";
+                btn.innerHTML = "📤 ส่งให้ QC ตรวจ";
             }
         }
+
+        // ==========================================
+        // Modal ตัดสินใจ (QC Inbox)
+        // ==========================================
+        async function approveQC(jobId) {
+            if(!confirm(`ยืนยัน อนุมัติผ่าน งานรหัส ${jobId}\n(ยอด FG และ NG จะถูกบันทึกเข้าระบบ) ใช่หรือไม่?`)) return;
+            
+            try {
+                const res = await fetch(SCRIPT_URL, { 
+                    method: 'POST', 
+                    body: JSON.stringify({ 
+                        action: 'UPDATE_SORTING', 
+                        jobId: jobId, 
+                        status: 'Completed', 
+                        closedBy: currentUser.name || currentUser.username
+                    })
+                });
+                const result = await res.json();
+                if(result.status === 'success'){
+                    alert("อนุมัติสำเร็จ!");
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) { 
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ"); 
+            }
+        }
+
+        function openRejectModal(jobId) {
+            document.getElementById('reject-job-id').value = jobId;
+            document.getElementById('rej-fg').checked = false; 
+            document.getElementById('rej-ng').checked = false;
+            document.getElementById('reject-reason').value = "";
+            document.getElementById('qcRejectModal').classList.remove('hidden');
+        }
+
+        function closeRejectModal() { 
+            document.getElementById('qcRejectModal').classList.add('hidden'); 
+        }
+
+        async function submitReject(e) {
+            e.preventDefault(); 
+            const isFg = document.getElementById('rej-fg').checked;
+            const isNg = document.getElementById('rej-ng').checked;
+            
+            if(!isFg && !isNg) {
+                return alert("กรุณาเลือกส่วนที่ต้องการตีกลับ (ยอด FG หรือ ยอด NG อย่างน้อย 1 อย่าง)");
+            }
+            
+            const btn = document.getElementById('btn-submit-reject'); 
+            btn.disabled = true; 
+            btn.innerHTML = "⏳ กำลังดำเนินการ...";
+            
+            const jobId = document.getElementById('reject-job-id').value;
+            const reason = document.getElementById('reject-reason').value.trim();
+            
+            let targets = [];
+            if(isFg) targets.push("FG"); 
+            if(isNg) targets.push("NG");
+            const targetStr = targets.join(" และ ");
+
+            try {
+                const res = await fetch(SCRIPT_URL, { 
+                    method: 'POST', 
+                    body: JSON.stringify({ 
+                        action: 'UPDATE_SORTING', 
+                        jobId: jobId, 
+                        status: 'Rejected', 
+                        closedBy: currentUser.name || currentUser.username, 
+                        rejectTarget: targetStr, 
+                        rejectReason: reason 
+                    })
+                });
+                const result = await res.json();
+                
+                if(result.status === 'success'){ 
+                    alert("ส่งกลับให้ Production แก้ไขเรียบร้อยแล้ว");
+                    closeRejectModal(); 
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) { 
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ"); 
+            } finally { 
+                btn.disabled = false; 
+                btn.innerHTML = "💥 ยืนยันการตีกลับ"; 
+            }
+        }
+
+        // ==========================================
+        // Modal แก้ไขข้อมูลตั้งต้น (Edit Job)
+        // ==========================================
+        function openEditModal(jobId) {
+            const job = allPendingJobs.find(j => j.jobId === jobId); 
+            if (!job) return alert("ไม่พบข้อมูลที่ต้องการแก้ไข");
+
+            document.getElementById('edit-job-id').value = job.jobId;
+
+            // วันที่และเวลา
+            let dDate = "", dTime = ""; 
+            if (job.date && job.date.includes(" ")) { 
+                const parts = job.date.split(" ");
+                dDate = parts[0]; 
+                dTime = parts[1]; 
+            } else {
+                dDate = job.date;
+            }
+            document.getElementById('edit-sort-date').value = dDate; 
+            if (timePickerEditInstance && dTime) {
+                timePickerEditInstance.setDate(dTime);
+            }
+
+            // เครื่องและรุ่น
+            let machine = "", product = job.product; 
+            if (job.product && job.product.includes(" : ")) { 
+                const pParts = job.product.split(" : ");
+                machine = pParts[0].trim(); 
+                product = pParts[1].trim(); 
+            }
+            document.getElementById('edit-sort-machine').value = machine; 
+            document.getElementById('edit-sort-product').value = product;
+
+            // ขั้นตอนและหมายเหตุ
+            let stage = "", remark = job.remark || ""; 
+            const rMatch = remark.match(/^\[พบที่:\s*(.+?)\]\s*(.*)$/); 
+            if (rMatch) { 
+                stage = rMatch[1]; 
+                remark = rMatch[2]; 
+            }
+            
+            const stageSelect = document.getElementById('edit-sort-stage');
+            let hasStageOption = Array.from(stageSelect.options).some(opt => opt.value === stage);
+            if (stage && !hasStageOption) {
+                stageSelect.innerHTML += `<option value="${stage}">${stage}</option>`;
+            }
+            stageSelect.value = stage; 
+            document.getElementById('edit-sort-remark').value = remark;
+
+            // อาการ
+            const symptomSelect = document.getElementById('edit-sort-symptom');
+            let hasSympOption = Array.from(symptomSelect.options).some(opt => opt.value === job.symptom);
+            if (job.symptom && !hasSympOption) {
+                symptomSelect.innerHTML += `<option value="${job.symptom}">${job.symptom}</option>`;
+            }
+            symptomSelect.value = job.symptom;
+
+            // จำนวนและหน่วย
+            let qty = "", unit = "kg";
+            if (job.qty && job.qty.includes(" ")) {
+                const qParts = job.qty.split(" ");
+                qty = qParts[0];
+                unit = qParts[1];
+            } else {
+                qty = parseFloat(job.qty) || "";
+                if (job.qty && job.qty.includes("ชิ้น")) unit = "ชิ้น";
+            }
+            document.getElementById('edit-sort-qty').value = qty; 
+            document.getElementById('edit-sort-unit').value = unit;
+
+            document.getElementById('editJobModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() { 
+            document.getElementById('editJobModal').classList.add('hidden'); 
+        }
+
+        async function submitEditJob(e) {
+            e.preventDefault(); 
+            const btn = document.getElementById('btn-submit-edit'); 
+            btn.disabled = true;
+            btn.innerHTML = "⏳ กำลังบันทึก...";
+
+            const jobId = document.getElementById('edit-job-id').value;
+            const dateVal = document.getElementById('edit-sort-date').value;
+            const timeVal = document.getElementById('edit-sort-time').value;
+            const machineVal = document.getElementById('edit-sort-machine').value;
+            const productVal = document.getElementById('edit-sort-product').value;
+            const stageVal = document.getElementById('edit-sort-stage').value;
+            const symptomVal = document.getElementById('edit-sort-symptom').value;
+            const qtyVal = document.getElementById('edit-sort-qty').value;
+            const unitVal = document.getElementById('edit-sort-unit').value;
+            let remarkVal = document.getElementById('edit-sort-remark').value;
+
+            const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
+            const finalQty = `${qtyVal} ${unitVal}`; 
+            const finalDate = `${dateVal} ${timeVal}`; 
+            const finalRemark = stageVal ? `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim() : remarkVal.trim();
+
+            const payload = { 
+                action: 'EDIT_SORTING', 
+                jobId: jobId, 
+                data: { 
+                    date: finalDate, 
+                    product: finalProduct, 
+                    symptom: symptomVal, 
+                    qty: finalQty, 
+                    remark: finalRemark, 
+                    recorder: currentUser.name || currentUser.username 
+                } 
+            };
+
+            try { 
+                const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) }); 
+                const result = await res.json(); 
+                if (result.status === 'success') { 
+                    alert("✅ บันทึกการแก้ไขสำเร็จ");
+                    closeEditModal(); 
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) {
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+            } finally { 
+                btn.disabled = false; 
+                btn.innerHTML = "💾 บันทึกการแก้ไข";
+            }
+        }
+
     </script>
 </body>
 </html>
