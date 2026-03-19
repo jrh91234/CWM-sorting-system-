@@ -439,13 +439,29 @@
 
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${qtyVal} ${unitVal}`; 
+            const finalDate = `${dateVal} ${timeVal}`; // นำเวลาไปต่อกับวันที่
             
+            // --- ระบบตรวจสอบการลงข้อมูลซ้ำ (Duplicate Check) ---
+            const isDuplicate = allPendingJobs.some(job => {
+                return job.date === finalDate && 
+                       job.product === finalProduct && 
+                       job.qty === finalQty;
+            });
+
+            if (isDuplicate) {
+                alert(`⚠️ ตรวจพบข้อมูลซ้ำ!\nมีรายการนี้รอ Sort อยู่ในระบบแล้ว\n(วันที่: ${finalDate} | เครื่อง/รุ่น: ${finalProduct} | จำนวน: ${finalQty})\n\nกรุณาตรวจสอบข้อมูลอีกครั้ง`);
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
+            // ---------------------------------------------------
+
             const finalRemark = `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim();
 
             const payload = {
                 action: 'SAVE_SORTING',
                 data: {
-                    date: `${dateVal} ${timeVal}`,
+                    date: finalDate,
                     product: finalProduct,
                     symptom: symptomVal,
                     qty: finalQty,
