@@ -1,1286 +1,1326 @@
-/**
- * ปรับปรุง v3.55 + ระบบ Authentication & Maintenance (Job ID) & RTV & Widget Manager & Packing: 
- * - เพิ่มระบบ Login, เช็คสิทธิ์ Role (Admin, Production, QC, Planning, Viewer)
- * - เพิ่มระบบเก็บ Log Action ของผู้ใช้
- * - คงฟังก์ชันเดิมทั้งหมด (บันทึกผลิต, แผน, สรุปกราฟ Dashboard ฯลฯ)
- * - เพิ่มระบบ Admin จัดการผู้ใช้ (เพิ่ม/แก้ไข/ลบ)
- * - เพิ่มระบบ แจ้งซ่อม/บันทึกปัญหา (Maintenance Log) แบบมี Job_ID (รองรับการซ่อมข้ามวัน กันกดเบิ้ล)
- * - เพิ่มระบบ บันทึกงานเคลม RTV
- * - เพิ่มระบบ Admin ซ่อน/แสดง กราฟบน Dashboard (Widget Manager)
- * - เพิ่มระบบ บันทึกข้อมูล Packing & Pallet
- * - [NEW] เพิ่มการส่งข้อมูล hourlyNgBreakdown เพื่อให้กราฟแสดงรายละเอียดของเสียรายชั่วโมง
- * - [NEW] เพิ่มการดึงข้อมูล maintenanceLogs และ rtvLogs ภาพรวมรายวัน สำหรับเมนู "สรุปงานซ่อม"
- * - [NEW] เพิ่มระบบงานรอ Sort (Pending, Wait QC, Rejected) และสรุปยอดของวันนี้
- */
-
-const REQUIRED_COLUMNS = [
-  "Timestamp", "Date", "Machine", "Shift", "Recorder", 
-  "Product", "Hour", "FG", "NG_Total", "NG_Details_JSON", "Shift_Type", "Batch_ID"
-];
-
-function capitalizeFirst(str) {
-  if (!str) return "";
-  let strTrimmed = String(str).trim();
-  if (strTrimmed.length > 0) {
-    return strTrimmed.charAt(0).toUpperCase() + strTrimmed.slice(1);
-  }
-  return strTrimmed;
-}
-
-// ==================================================
-// 🌟 ฟังก์ชันสำหรับเซฟรูปภาพลง Google Drive
-// ==================================================
-function saveImageToDrive(base64Data, filename) {
-  if (!base64Data) return "";
-  try {
-    const splitBase = base64Data.split(',');
-    const type = splitBase[0].split(';')[0].replace('data:', '');
-    const byteCharacters = Utilities.base64Decode(splitBase[1]);
-    const blob = Utilities.newBlob(byteCharacters, type, filename);
-
-    const folderId = "1GcY_XvQTaBTE75dkrWdh8SnABXfUc6G4";
-    const folder = DriveApp.getFolderById(folderId);
-
-    const file = folder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบันทึกงานรอ Sort - CWM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    return file.getUrl(); 
-  } catch (e) {
-    console.error("Save image error: " + e);
-    return "";
-  }
-}
-
-// ==================================================
-// 🌟 GET ROUTE (ดึงข้อมูล)
-// ==================================================
-function doGet(e) {
-  try {
-    const action = e.parameter.action;
+    <!-- เพิ่ม Flatpickr CSS สำหรับหน้าต่างเลือกเวลาแบบ 24 ชม. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     
-    if (action === "GET_DASHBOARD") {
-      return ContentService.createTextOutput(JSON.stringify(getAdvancedDashboardData(e.parameter.start, e.parameter.end, e.parameter.shift, e.parameter.shiftType))).setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    if (action === "GET_OPTIONS") {
-      return ContentService.createTextOutput(JSON.stringify(getUniqueOptionsFromHistory())).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // ดึงข้อมูลงานรอ Sort และสรุปยอดของวันนี้
-    if (action === "GET_SORTING") {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const sheet = ss.getSheetByName("Sorting_Data");
-      if (!sheet) return ContentService.createTextOutput(JSON.stringify({status: "success", data: [], todaySummary: []})).setMimeType(ContentService.MimeType.JSON);
-      
-      const rows = sheet.getDataRange().getValues();
-      const headers = rows[0];
-      const activeJobs = [];
-      const todaySortedJobs = [];
-      
-      let jobCol = headers.indexOf("Job_ID");
-      let dateCol = headers.indexOf("Date");
-      let prodCol = headers.indexOf("Product");
-      let sympCol = headers.indexOf("Symptom");
-      let qtyCol = headers.indexOf("Qty");
-      let remCol = headers.indexOf("Remark");
-      let recCol = headers.indexOf("Recorder");
-      let statCol = headers.indexOf("Status");
-      let fgCol = headers.indexOf("FG_Qty");
-      let ngCol = headers.indexOf("NG_Qty");
-      let closedDateCol = headers.indexOf("Closed_Date");
-
-      if (jobCol === -1 || statCol === -1) return ContentService.createTextOutput(JSON.stringify({status: "success", data: [], todaySummary: []})).setMimeType(ContentService.MimeType.JSON);
-
-      const todayObj = new Date();
-      const todayISO = Utilities.formatDate(todayObj, "GMT+7", "yyyy-MM-dd");
-      const todayDateNum = todayObj.getDate();
-      const todayMonthNum = todayObj.getMonth() + 1;
-
-      for (let i = 1; i < rows.length; i++) {
-        let r = rows[i];
-        let currentStatus = String(r[statCol]).trim();
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        .loader { border-top-color: #3498db; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        let cDate = closedDateCol > -1 ? r[closedDateCol] : "";
-        let isClosedToday = false;
+        /* สไตล์ Scrollbar เล็กสำหรับกล่องสรุป */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
         
-        if (cDate) {
-            if (cDate instanceof Date) {
-                if (Utilities.formatDate(cDate, "GMT+7", "yyyy-MM-dd") === todayISO) isClosedToday = true;
-            } else {
-                let cStr = String(cDate);
-                if (cStr.includes(todayISO) || 
-                    cStr.includes(`${todayDateNum}/${todayMonthNum}/`) || 
-                    cStr.includes(`${("0"+todayDateNum).slice(-2)}/${("0"+todayMonthNum).slice(-2)}/`)) {
-                    isClosedToday = true;
-                }
+        /* สไตล์สำหรับ Tab */
+        .tab-btn { transition: all 0.3s ease; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom: 2px solid #2563eb; color: #1e3a8a; font-weight: bold; background-color: #eff6ff; }
+        
+        /* สไตล์สำหรับ Status Badge */
+        .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; display: inline-block; margin-top: 4px; }
+        .status-Pending { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+        .status-WaitQC { background-color: #fef08a; color: #9a3412; border: 1px solid #fde047; }
+        .status-Rejected { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .status-Completed { background-color: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-blue-800 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <span class="text-xl font-bold tracking-wider">CWM SORTING</span>
+                    <span class="hidden md:inline-block bg-blue-700 text-xs px-2 py-1 rounded">ระบบจัดการงานรอ Sort</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="user-info" class="text-sm"></div>
+                    <button onclick="window.location.href='index.html'" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-sm transition-colors">
+                        กลับหน้าหลัก
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        
+        <!-- Form Section -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+            <h2 class="text-lg font-bold text-gray-800 border-b pb-2 mb-4">📥 ลงบันทึกงานรอ Sort ใหม่</h2>
+            <form id="sortForm" onsubmit="submitSortJob(event)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <!-- 1. วันที่ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">วันที่ (Date)</label>
+                    <input type="date" id="sort-date" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <!-- 2. เวลา -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
+                    <input type="text" id="sort-time" required placeholder="HH:MM" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                </div>
+
+                <!-- 3. เครื่องจักร -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">จากเครื่อง (Machine)</label>
+                    <select id="sort-machine" required onchange="onMachineChange('sort-machine', 'sort-product')" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="">-- กำลังโหลดข้อมูล... --</option>
+                    </select>
+                </div>
+
+                <!-- 4. รุ่นสินค้า -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">รุ่นสินค้า (Model)</label>
+                    <select id="sort-product" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="">-- เลือกรุ่น --</option>
+                        <option value="S1B29288-JR (10A)">S1B29288-JR (10A)</option>
+                        <option value="S1B71819-JR (16A)">S1B71819-JR (16A)</option>
+                        <option value="S1B29292-JR (20A)">S1B29292-JR (20A)</option>
+                        <option value="51207080HC-JR (25/32A)">51207080HC-JR (25/32A)</option>
+                    </select>
+                </div>
+
+                <!-- 5. ขั้นตอนที่พบ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ขั้นตอนที่พบ (Stage)</label>
+                    <div class="flex gap-2">
+                        <select id="sort-stage" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                            <!-- จะถูกใส่ตัวเลือกด้วย JS -->
+                        </select>
+                        <button type="button" onclick="openStageModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 rounded-lg transition" title="จัดการตัวเลือก">
+                            ⚙️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 6. อาการเสีย -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">อาการเสีย (NG Symptom)</label>
+                    <select id="sort-symptom" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="">-- กำลังโหลดอาการ... --</option>
+                    </select>
+                </div>
+
+                <!-- 7. จำนวนและหน่วย (kg/ชิ้น) -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">จำนวนที่รอ Sort</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="sort-qty" required min="0.01" step="any" placeholder="ระบุจำนวน..." class="w-2/3 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select id="sort-unit" class="w-1/3 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                            <option value="kg" selected>kg</option>
+                            <option value="ชิ้น">ชิ้น</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 8. หมายเหตุ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">หมายเหตุ / จุดที่พบ</label>
+                    <input type="text" id="sort-remark" placeholder="ใส่เฉพาะหมายเหตุ..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <!-- ปุ่ม Submit -->
+                <div class="md:col-span-2 lg:col-span-4 flex justify-end mt-2">
+                    <button type="submit" id="btn-save-sort" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-sm">
+                        + บันทึกเข้าระบบรอ Sort
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 🌟 TODAY'S SUMMARY SECTION 🌟 -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6 border-t-4 border-blue-500">
+            <h2 class="text-lg font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
+                🎯 สรุปยอดผลงาน Sort วันนี้
+            </h2>
+            <div id="today-summary-content" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="col-span-full text-center py-4 text-gray-500">กำลังโหลดข้อมูล...</div>
+            </div>
+        </div>
+
+        <!-- Table Section with TABS -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            
+            <!-- Tabs Header -->
+            <div class="flex border-b bg-gray-50 px-2 pt-2 gap-1 overflow-x-auto" id="tabs-container">
+                <button onclick="switchTab('prod')" id="tab-prod" class="tab-btn active px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap">
+                    📦 งานรอ Sort (Production)
+                </button>
+                <button onclick="switchTab('qc')" id="tab-qc" class="tab-btn hidden px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap flex items-center gap-2">
+                    🔬 กล่องข้อความตรวจงาน (QC Inbox) 
+                    <span id="qc-badge" class="bg-red-500 text-white rounded-full px-2 py-0.5 text-xs hidden">0</span>
+                </button>
+            </div>
+
+            <div class="p-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 mb-4 gap-3 border-b">
+                    <h2 class="text-lg font-bold text-gray-800" id="table-title">📋 รายการงานรอ Sort</h2>
+                    
+                    <div class="flex w-full md:w-auto gap-2">
+                        <!-- ช่องค้นหาข้อมูลอัจฉริยะ -->
+                        <input type="text" id="searchInput" oninput="renderTable()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        
+                        <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap font-bold border">
+                            🔄 รีเฟรช
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse mb-4">
+                        <thead>
+                            <tr class="bg-gray-50 text-gray-600 text-sm uppercase">
+                                <th class="p-3 border-b">รหัสงาน</th>
+                                <th class="p-3 border-b sortable-header transition-colors group" onclick="toggleSort('date')">
+                                    <div class="flex items-center justify-between">
+                                        วันที่แจ้ง <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
+                                    </div>
+                                </th>
+                                <th class="p-3 border-b">รุ่นสินค้า</th>
+                                <th class="p-3 border-b">อาการ (Symptom) / หมายเหตุ</th>
+                                <th class="p-3 border-b text-right">จำนวน</th>
+                                <th class="p-3 border-b text-center">จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sort-table-body">
+                            <tr><td colspan="6" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                        </tbody>
+                        <tfoot id="sort-table-foot" class="bg-blue-50 hidden">
+                            <!-- สรุปยอดรวมจะถูกสร้างด้วย JS -->
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Modal จัดการขั้นตอน (Stage) -->
+    <div id="manageStageModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-800">⚙️ จัดการตัวเลือกขั้นตอน</h3>
+                <button type="button" onclick="closeStageModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="new-stage-input" placeholder="พิมพ์ตัวเลือกใหม่..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <button type="button" onclick="addStage()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold transition">+</button>
+            </div>
+            
+            <p class="text-xs text-gray-500 mb-2 font-bold">รายการตัวเลือกปัจจุบัน:</p>
+            <ul id="stage-list" class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y bg-gray-50 custom-scrollbar">
+                <!-- รายการจะถูกสร้างด้วย JS -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modal แก้ไขข้อมูล (Edit Data) -->
+    <div id="editJobModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl p-6 mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-800">✏️ แก้ไขข้อมูลงานรอ Sort</h3>
+                <button type="button" onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <form id="editForm" onsubmit="submitEditJob(event)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <input type="hidden" id="edit-job-id">
+
+                <!-- 1. วันที่ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">วันที่ (Date)</label>
+                    <input type="date" id="edit-sort-date" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
+                </div>
+
+                <!-- 2. เวลา -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
+                    <input type="text" id="edit-sort-time" required placeholder="HH:MM" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                </div>
+
+                <!-- 3. เครื่องจักร -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">จากเครื่อง (Machine)</label>
+                    <select id="edit-sort-machine" required onchange="onMachineChange('edit-sort-machine', 'edit-sort-product')" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <!-- Options generated by JS -->
+                    </select>
+                </div>
+
+                <!-- 4. รุ่นสินค้า -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">รุ่นสินค้า (Model)</label>
+                    <select id="edit-sort-product" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <option value="">-- เลือกรุ่น --</option>
+                        <option value="S1B29288-JR (10A)">S1B29288-JR (10A)</option>
+                        <option value="S1B71819-JR (16A)">S1B71819-JR (16A)</option>
+                        <option value="S1B29292-JR (20A)">S1B29292-JR (20A)</option>
+                        <option value="51207080HC-JR (25/32A)">51207080HC-JR (25/32A)</option>
+                    </select>
+                </div>
+
+                <!-- 5. ขั้นตอนที่พบ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ขั้นตอนที่พบ (Stage)</label>
+                    <select id="edit-sort-stage" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <!-- Options generated by JS -->
+                    </select>
+                </div>
+
+                <!-- 6. อาการเสีย -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">อาการเสีย (NG Symptom)</label>
+                    <select id="edit-sort-symptom" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <!-- Options generated by JS -->
+                    </select>
+                </div>
+
+                <!-- 7. จำนวนและหน่วย -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">จำนวนที่รอ Sort</label>
+                    <div class="flex gap-2">
+                        <input type="number" id="edit-sort-qty" required min="0.01" step="any" placeholder="ระบุจำนวน..." class="w-2/3 p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
+                        <select id="edit-sort-unit" class="w-1/3 p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                            <option value="kg">kg</option>
+                            <option value="ชิ้น">ชิ้น</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 8. หมายเหตุ -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">หมายเหตุ / จุดที่พบ</label>
+                    <input type="text" id="edit-sort-remark" placeholder="ใส่เฉพาะหมายเหตุ..." class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
+                </div>
+
+                <!-- ปุ่ม Submit Edit -->
+                <div class="md:col-span-2 lg:col-span-4 flex justify-end gap-3 mt-4 border-t pt-4">
+                    <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" id="btn-submit-edit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow-sm">
+                        💾 บันทึกการแก้ไข
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal สำหรับ Production: ปิดงานส่งให้ QC -->
+    <div id="closeJobModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-800">✅ ปิดงานส่งให้ QC ตรวจสอบ</h3>
+                <button type="button" onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <form id="closeJobForm" onsubmit="submitToQC(event)">
+                <input type="hidden" id="modal-job-id">
+                <input type="hidden" id="modal-product-str">
+                
+                <div class="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p class="text-sm text-gray-600">รหัสงาน: <span id="modal-job-id-text" class="font-bold text-blue-800"></span></p>
+                    <p class="text-sm text-gray-600 mt-1">รุ่นสินค้า: <span id="modal-product-text" class="font-bold text-gray-800"></span></p>
+                </div>
+
+                <!-- ยอด FG -->
+                <div class="mb-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                    <label class="block text-xs font-bold text-green-800 mb-2">ยอดงานดี (FG - Finished Goods)</label>
+                    <div class="flex gap-2 mb-1">
+                        <input type="number" id="modal-fg-qty" required min="0" step="any" placeholder="ระบุจำนวน" class="w-2/3 p-2 border border-green-300 rounded focus:ring-2 focus:ring-green-500" oninput="calculateModalQty('fg')">
+                        <select id="modal-fg-unit" class="w-1/3 p-2 border border-green-300 rounded focus:ring-2 focus:ring-green-500 bg-white" onchange="calculateModalQty('fg')">
+                            <option value="kg" selected>kg</option>
+                            <option value="ชิ้น">ชิ้น</option>
+                        </select>
+                    </div>
+                    <p id="modal-fg-convert" class="text-xs text-green-700 font-medium text-right h-4"></p>
+                </div>
+
+                <!-- ยอด NG -->
+                <div class="mb-6 bg-red-50 p-4 rounded-lg border border-red-200">
+                    <label class="block text-xs font-bold text-red-800 mb-2">ยอดงานเสีย (NG - Not Good)</label>
+                    <div class="flex gap-2 mb-1">
+                        <input type="number" id="modal-ng-qty" required min="0" step="any" placeholder="ระบุจำนวน" class="w-2/3 p-2 border border-red-300 rounded focus:ring-2 focus:ring-red-500" oninput="calculateModalQty('ng')">
+                        <select id="modal-ng-unit" class="w-1/3 p-2 border border-red-300 rounded focus:ring-2 focus:ring-red-500 bg-white" onchange="calculateModalQty('ng')">
+                            <option value="kg" selected>kg</option>
+                            <option value="ชิ้น">ชิ้น</option>
+                        </select>
+                    </div>
+                    <p id="modal-ng-convert" class="text-xs text-red-700 font-medium text-right h-4"></p>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-4">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" id="btn-submit-qc" class="px-5 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition shadow">📤 ส่งให้ QC ตรวจ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal สำหรับ QC: ตีกลับงาน (Reject) -->
+    <div id="qcRejectModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4 border-t-4 border-red-500">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-red-700">🔴 ตีกลับงานให้ Production</h3>
+                <button type="button" onclick="closeRejectModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✖</button>
+            </div>
+            
+            <form id="rejectForm" onsubmit="submitReject(event)">
+                <input type="hidden" id="reject-job-id">
+                
+                <p class="text-sm mb-3 font-bold text-gray-700">เลือกส่วนที่ต้องการตีกลับให้นับ/คัดใหม่:</p>
+                
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <label class="flex items-center gap-2 bg-gray-50 p-3 rounded-lg border cursor-pointer hover:bg-gray-100 transition">
+                        <input type="checkbox" id="rej-fg" value="FG" class="w-5 h-5 text-red-600 rounded"> 
+                        <span class="font-bold text-green-700">ยอด FG</span>
+                    </label>
+                    <label class="flex items-center gap-2 bg-gray-50 p-3 rounded-lg border cursor-pointer hover:bg-gray-100 transition">
+                        <input type="checkbox" id="rej-ng" value="NG" class="w-5 h-5 text-red-600 rounded"> 
+                        <span class="font-bold text-red-700">ยอด NG</span>
+                    </label>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">เหตุผลที่ตีกลับ (จำเป็นต้องระบุ):</label>
+                    <textarea id="reject-reason" required rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500" placeholder="เช่น พบรอยขีดข่วนปนในกล่อง FG..."></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-4 pt-2 border-t border-gray-100">
+                    <button type="button" onclick="closeRejectModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" id="btn-submit-reject" class="px-5 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition shadow">💥 ยืนยันการตีกลับ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- เพิ่ม Flatpickr JS สำหรับสร้าง Time Picker 24H -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <script>
+        // ==========================================
+        // ส่วนของการตั้งค่าตัวแปรและเริ่มต้นระบบ
+        // ==========================================
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyt3Bf_2h21BBcCHQSjizowy_kD5vsoUqgaC_YmVjLuQybJO1BBRt3eaSM0PuKEFfvruw/exec";
+        let currentUser = null;
+        let globalMachineMapping = {}; 
+        let allPendingJobs = []; 
+        let todaySortedData = []; // เก็บข้อมูลที่ Sort วันนี้
+        let activeTab = 'prod'; 
+        
+        let timePickerInstance = null;
+        let timePickerEditInstance = null;
+
+        const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG"];
+        let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
+
+        window.onload = () => {
+            const savedUser = localStorage.getItem('CWM_AUTH_USER');
+            if (!savedUser) { 
+                alert("กรุณาเข้าสู่ระบบผ่านหน้าหลักก่อนใช้งาน");
+                window.location.href = 'index.html'; 
+                return; 
             }
-        }
 
-        // งานที่ยังดำเนินการอยู่ (แสดงในตารางหลัก)
-        if (currentStatus === "Pending" || currentStatus === "Wait QC" || currentStatus === "Rejected") {
-          let dDate = r[dateCol];
-          if (dDate instanceof Date) {
-              dDate = Utilities.formatDate(dDate, "GMT+7", "yyyy-MM-dd HH:mm");
-          } else {
-              dDate = String(dDate);
-          }
-          
-          activeJobs.push({
-            jobId: r[jobCol],
-            date: dDate,
-            product: r[prodCol],
-            symptom: r[sympCol],
-            qty: r[qtyCol],
-            remark: r[remCol],
-            recorder: r[recCol],
-            status: currentStatus,
-            fgQty: fgCol > -1 ? r[fgCol] : "",
-            ngQty: ngCol > -1 ? r[ngCol] : ""
-          });
-        }
+            currentUser = JSON.parse(savedUser);
+            const allowedRoles = ['Admin', 'Production', 'QC'];
+            if (!allowedRoles.includes(currentUser.role)) { 
+                alert(`คุณ (${currentUser.role}) ไม่มีสิทธิ์เข้าถึงหน้านี้`);
+                window.location.href = 'index.html'; 
+                return; 
+            }
 
-        // งานที่ Sort เสร็จในวันนี้ (รวบรวมเป็นสรุปยอดด้านบน)
-        if ((currentStatus === "Wait QC" || currentStatus === "Completed" || currentStatus === "Rejected") && isClosedToday) {
-            todaySortedJobs.push({
-                jobId: r[jobCol],
-                product: r[prodCol],
-                fgQty: fgCol > -1 ? r[fgCol] : "",
-                ngQty: ngCol > -1 ? r[ngCol] : "",
-                status: currentStatus
-            });
-        }
-      }
-      
-      activeJobs.sort((a, b) => b.date.localeCompare(a.date));
-      return ContentService.createTextOutput(JSON.stringify({
-          status: "success", 
-          data: activeJobs,
-          todaySummary: todaySortedJobs
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
+            document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name}</span> (${currentUser.role})`;
+            
+            if (currentUser.role === 'QC' || currentUser.role === 'Admin') {
+                document.getElementById('tab-qc').classList.remove('hidden');
+                if(currentUser.role === 'QC') switchTab('qc');
+            }
 
-    // ดึงข้อมูลแจ้งซ่อมที่ยังไม่เสร็จ (ค้างข้ามวัน)
-    if (action === "GET_PENDING_MAINTENANCE") {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const sheet = ss.getSheetByName("Maintenance_Data");
-      if (!sheet) return ContentService.createTextOutput(JSON.stringify({status: "success", data: []})).setMimeType(ContentService.MimeType.JSON);
-      
-      const rows = sheet.getDataRange().getValues();
-      const headers = rows[0];
-      const pendingJobs = [];
-      
-      let jobCol = headers.indexOf("Job_ID");
-      let dateCol = headers.indexOf("Date");
-      let macCol = headers.indexOf("Machine");
-      let issueCol = headers.indexOf("Issue_Type");
-      let startCol = headers.indexOf("Start_Time");
-      let endCol = headers.indexOf("End_Time");
-      let remarkCol = headers.indexOf("Remark");
-
-      if (jobCol === -1) return ContentService.createTextOutput(JSON.stringify({status: "success", data: []})).setMimeType(ContentService.MimeType.JSON);
-
-      for (let i = 1; i < rows.length; i++) {
-        let r = rows[i];
-        if (r[jobCol] && (!r[endCol] || String(r[endCol]).trim() === "")) {
-          let dDate = (r[dateCol] instanceof Date) ? Utilities.formatDate(r[dateCol], "GMT+7", "yyyy-MM-dd") : String(r[dateCol]).substring(0, 10);
-          let sTime = (r[startCol] instanceof Date) ? Utilities.formatDate(r[startCol], "GMT+7", "HH:mm") : String(r[startCol]).substring(0, 5);
-          
-          pendingJobs.push({
-            jobId: r[jobCol],
-            date: dDate,
-            machine: r[macCol],
-            issueType: r[issueCol],
-            startTime: sTime,
-            remark: r[remarkCol]
-          });
-        }
-      }
-      
-      pendingJobs.sort((a, b) => a.date.localeCompare(b.date));
-      return ContentService.createTextOutput(JSON.stringify({status: "success", data: pendingJobs})).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    if (action === "DEBUG") {
-      return ContentService.createTextOutput(JSON.stringify(debugSheetData())).setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    const url = ScriptApp.getService().getUrl();
-    const html = `<div style="font-family:sans-serif;text-align:center;padding:50px;"><h1>🚀 System v3.55 (Auth + QC Inbox) Online</h1><a href="${url}?action=DEBUG" target="_blank" style="background:#007bff;color:white;padding:15px 30px;text-decoration:none;border-radius:5px;font-weight:bold;">🔍 กดปุ่มนี้เพื่อดูข้อมูล Debug</a></div>`;
-    return HtmlService.createHtmlOutput(html);
-
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// ==================================================
-// 🌟 POST ROUTE (บันทึกข้อมูล)
-// ==================================================
-function doPost(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  let data = {};
-  try {
-    data = JSON.parse(e.postData.contents);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Invalid JSON" })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  const action = data.action;
-
-  // --- ส่วนที่ 1: ระบบ Authentication & Admin ---
-  if (action === "LOGIN") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users' ในฐานข้อมูล"})).setMimeType(ContentService.MimeType.JSON);
-    
-    const sheetData = sheet.getDataRange().getValues();
-    for (let i = 1; i < sheetData.length; i++) {
-      if (String(sheetData[i][0]) === String(data.username) && String(sheetData[i][1]) === String(data.password)) {
-        logUserAction(sheetData[i][0], sheetData[i][2], "LOGIN", "เข้าสู่ระบบสำเร็จ");
-        return ContentService.createTextOutput(JSON.stringify({
-          success: true,
-          user: { username: String(sheetData[i][0]), role: sheetData[i][2], name: sheetData[i][3] }
-        })).setMimeType(ContentService.MimeType.JSON);
-      }
-    }
-    return ContentService.createTextOutput(JSON.stringify({success: false, message: "Username หรือ Password ไม่ถูกต้อง"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action === "LOG_ACTION") {
-    logUserAction(data.username, data.role, data.logType, data.details);
-    return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action === "CHANGE_PASSWORD") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users'"})).setMimeType(ContentService.MimeType.JSON);
-
-    const sheetData = sheet.getDataRange().getValues();
-    let foundRow = -1;
-    for (let i = 1; i < sheetData.length; i++) {
-      if (String(sheetData[i][0]) === String(data.username) && String(sheetData[i][1]) === String(data.oldPassword)) {
-        foundRow = i + 1; 
-        break;
-      }
-    }
-
-    if (foundRow > 1) {
-      sheet.getRange(foundRow, 2).setValue(data.newPassword);
-      logUserAction(data.username, data.role || "User", "CHANGE_PASSWORD", "ผู้ใช้งานเปลี่ยนรหัสผ่านด้วยตนเอง");
-      return ContentService.createTextOutput(JSON.stringify({success: true, message: "เปลี่ยนรหัสผ่านสำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-    } else {
-      return ContentService.createTextOutput(JSON.stringify({success: false, message: "รหัสผ่านเดิมไม่ถูกต้อง หรือไม่พบข้อมูลผู้ใช้"})).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  if (action === "GET_USERS") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users'"})).setMimeType(ContentService.MimeType.JSON);
-    
-    const sheetData = sheet.getDataRange().getValues();
-    const users = [];
-    for(let i = 1; i < sheetData.length; i++) {
-        users.push({ username: sheetData[i][0], role: sheetData[i][2], name: sheetData[i][3] });
-    }
-    return ContentService.createTextOutput(JSON.stringify({success: true, users: users})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action === "ADD_USER") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users'"})).setMimeType(ContentService.MimeType.JSON);
-    
-    const sheetData = sheet.getDataRange().getValues();
-    for (let i = 1; i < sheetData.length; i++) {
-      if (String(sheetData[i][0]) === String(data.newUsername)) {
-        return ContentService.createTextOutput(JSON.stringify({success: false, message: "มี Username นี้ในระบบแล้ว"})).setMimeType(ContentService.MimeType.JSON);
-      }
-    }
-    
-    sheet.appendRow([data.newUsername, data.newPassword, data.newRole, data.newName]);
-    logUserAction(data.adminUsername || "Admin", "Admin", "ADD_USER", "เพิ่มผู้ใช้ใหม่: " + data.newUsername);
-    return ContentService.createTextOutput(JSON.stringify({success: true, message: "เพิ่มผู้ใช้สำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  if (action === "EDIT_USER") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users'"})).setMimeType(ContentService.MimeType.JSON);
-    
-    const sheetData = sheet.getDataRange().getValues();
-    let foundRow = -1;
-    for (let i = 1; i < sheetData.length; i++) {
-      if (String(sheetData[i][0]) === String(data.targetUsername)) {
-        foundRow = i + 1; 
-        break;
-      }
-    }
-    
-    if (foundRow > 1) {
-      if (data.newUsername) sheet.getRange(foundRow, 1).setValue(data.newUsername);
-      if (data.newPassword) sheet.getRange(foundRow, 2).setValue(data.newPassword);
-      if (data.newRole) sheet.getRange(foundRow, 3).setValue(data.newRole);
-      if (data.newName) sheet.getRange(foundRow, 4).setValue(data.newName);
-      
-      logUserAction(data.adminUsername || "Admin", "Admin", "EDIT_USER", "แก้ไขผู้ใช้: " + data.targetUsername);
-      return ContentService.createTextOutput(JSON.stringify({success: true, message: "แก้ไขข้อมูลผู้ใช้สำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-    } else {
-      return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบผู้ใช้ที่ต้องการแก้ไข"})).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  if (action === "DELETE_USER") {
-    const sheet = ss.getSheetByName("Users");
-    if (!sheet) return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบ Sheet 'Users'"})).setMimeType(ContentService.MimeType.JSON);
-    
-    const sheetData = sheet.getDataRange().getValues();
-    let foundRow = -1;
-    for (let i = 1; i < sheetData.length; i++) {
-      if (String(sheetData[i][0]) === String(data.targetUsername)) {
-        foundRow = i + 1;
-        break;
-      }
-    }
-    
-    if (foundRow > 1) {
-      sheet.deleteRow(foundRow);
-      logUserAction(data.adminUsername || "Admin", "Admin", "DELETE_USER", "ลบผู้ใช้: " + data.targetUsername);
-      return ContentService.createTextOutput(JSON.stringify({success: true, message: "ลบผู้ใช้สำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-    } else {
-      return ContentService.createTextOutput(JSON.stringify({success: false, message: "ไม่พบผู้ใช้ที่ต้องการลบ"})).setMimeType(ContentService.MimeType.JSON);
-    }
-  }
-
-  // --- ส่วนที่ 2: ระบบแจ้งซ่อม (Maintenance) ---
-  if (action === "SAVE_MAINTENANCE") {
-    const lock = LockService.getScriptLock();
-    try {
-      lock.waitLock(10000); 
-
-      let sheet = ss.getSheetByName("Maintenance_Data");
-      if (!sheet) {
-          sheet = ss.insertSheet("Maintenance_Data");
-          sheet.appendRow(["Timestamp", "Date", "Machine", "Issue_Type", "Start_Time", "End_Time", "Remark", "Image_URL", "Recorder", "Job_ID", "End_Date"]);
-      }
-
-      let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
-      
-      if (headers.indexOf("Job_ID") === -1) {
-          sheet.getRange(1, headers.length + 1).setValue("Job_ID");
-          headers.push("Job_ID");
-      }
-      if (headers.indexOf("End_Date") === -1) {
-          sheet.getRange(1, headers.length + 1).setValue("End_Date");
-          headers.push("End_Date");
-      }
-
-      const now = new Date();
-      const dateStr = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd");
-      const timeStr = Utilities.formatDate(now, "GMT+7", "HHmmss");
-
-      // กรณีปิดจ๊อบค้าง
-      if (data.jobId) {
-        const rows = sheet.getDataRange().getValues();
-        let foundRow = -1;
-        
-        let jobCol = headers.indexOf("Job_ID");
-        let endDateCol = headers.indexOf("End_Date") + 1; 
-        let endTimeCol = headers.indexOf("End_Time") + 1;
-        let remarkCol = headers.indexOf("Remark") + 1;
-        let imgCol = headers.indexOf("Image_URL") + 1;
-
-        for (let i = 1; i < rows.length; i++) {
-          if (rows[i][jobCol] === data.jobId) {
-            foundRow = i + 1; 
-            break;
-          }
-        }
-
-        if (foundRow > -1) {
-          if (data.endDate) sheet.getRange(foundRow, endDateCol).setValue(data.endDate);
-          if (data.endTime) sheet.getRange(foundRow, endTimeCol).setValue(data.endTime);
-          
-          let oldRemark = sheet.getRange(foundRow, remarkCol).getValue();
-          let newRemarkText = ` | ปิดจ๊อบโดย: ${data.username || "Unknown"}`;
-          if (data.remark && String(data.remark).trim() !== "") {
-              newRemarkText += ` (อัปเดตตอนปิด: ${data.remark})`;
-          }
-          sheet.getRange(foundRow, remarkCol).setValue(oldRemark + newRemarkText);
-
-          if (data.imageBase64 && imgCol > 0) {
-              let closeImageUrl = saveImageToDrive(data.imageBase64, `MaintClose_${data.machine}_${dateStr}_${timeStr}.jpg`);
-              if (closeImageUrl) {
-                  let oldImg = sheet.getRange(foundRow, imgCol).getValue();
-                  sheet.getRange(foundRow, imgCol).setValue(oldImg ? oldImg + "|" + closeImageUrl : closeImageUrl);
-              }
-          }
-
-          SpreadsheetApp.flush();
-          logUserAction(data.username || "System", data.role || "User", "CLOSE_MAINTENANCE", `ปิดจ๊อบ ${data.jobId} เครื่อง ${data.machine}`);
-          return ContentService.createTextOutput(JSON.stringify({status: "success", message: `ปิดจ๊อบ ${data.jobId} สำเร็จ!`})).setMimeType(ContentService.MimeType.JSON);
-        } else {
-          return ContentService.createTextOutput(JSON.stringify({status: "error", message: `ไม่พบจ๊อบ ${data.jobId} ในฐานข้อมูล`})).setMimeType(ContentService.MimeType.JSON);
-        }
-      } 
-      // กรณีเปิดจ๊อบใหม่ (กันเบิ้ล)
-      else {
-        const rows = sheet.getDataRange().getValues();
-        let isDuplicate = false;
-        
-        let dateCol = headers.indexOf("Date");
-        let macCol = headers.indexOf("Machine");
-        let startCol = headers.indexOf("Start_Time");
-
-        let inDate = data.date || dateStr;
-        let inStartMatch = String(data.startTime).match(/(\d{1,2}:\d{2})/);
-        let inStart = inStartMatch ? inStartMatch[1].padStart(5, '0') : String(data.startTime).substring(0, 5);
-
-        let startCheck = Math.max(1, rows.length - 50);
-        for (let i = startCheck; i < rows.length; i++) {
-          let rDateVal = rows[i][dateCol];
-          let rDate = (rDateVal instanceof Date) ? Utilities.formatDate(rDateVal, "GMT+7", "yyyy-MM-dd") : String(rDateVal).substring(0, 10);
-          
-          let rMac = String(rows[i][macCol]).trim();
-          
-          let rStartVal = rows[i][startCol];
-          let rStart = "";
-          if (rStartVal instanceof Date) {
-              rStart = Utilities.formatDate(rStartVal, "GMT+7", "HH:mm");
-          } else if (rStartVal) {
-              let match = String(rStartVal).match(/(\d{1,2}:\d{2})/);
-              if (match) rStart = match[1].padStart(5, '0');
-          }
-
-          if (rDate === inDate && rMac === data.machine && rStart === inStart) {
-              isDuplicate = true;
-              break;
-          }
-        }
-
-        if (isDuplicate) {
-            return ContentService.createTextOutput(JSON.stringify({status: "success", message: `บันทึกข้อมูลเรียบร้อยแล้ว`})).setMimeType(ContentService.MimeType.JSON);
-        }
-
-        let imageUrl = data.imageBase64 ? saveImageToDrive(data.imageBase64, `Maint_${data.machine}_${dateStr}_${timeStr}.jpg`) : "";
-
-        const newJobId = "MT-" + Utilities.formatDate(now, "GMT+7", "yyMMdd") + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-        
-        let newRow = new Array(headers.length).fill("");
-        const mapValue = (colName, val) => {
-            let idx = headers.indexOf(colName);
-            if (idx > -1) newRow[idx] = val;
+            initTimePicker(); 
+            setDefaultDateTime(); 
+            renderStageDropdown(); 
+            fetchOptions(); 
+            loadSortJobs();
         };
 
-        mapValue("Timestamp", now.toLocaleString('th-TH'));
-        mapValue("Date", inDate);
-        mapValue("Machine", data.machine);
-        mapValue("Issue_Type", data.issueType);
-        mapValue("Start_Time", data.startTime);
-        mapValue("End_Time", data.endTime || "");
-        mapValue("Remark", data.remark || "-");
-        mapValue("Image_URL", imageUrl);
-        mapValue("Recorder", data.username || "Unknown");
-        mapValue("Job_ID", newJobId);
-        mapValue("End_Date", data.endDate || "");
+        // ==========================================
+        // ฟังก์ชันระบบพื้นฐาน (UI & Tab)
+        // ==========================================
+        function switchTab(tab) {
+            activeTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            document.getElementById('table-title').innerText = tab === 'prod' ? '📦 งานรอ Sort / งานตีกลับ' : '🔬 กล่องข้อความตรวจสอบ (QC Inbox)';
+            renderTable();
+        }
 
-        sheet.appendRow(newRow);
-        SpreadsheetApp.flush();
+        function initTimePicker() {
+            timePickerInstance = flatpickr("#sort-time", { 
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true, defaultDate: new Date() 
+            });
+            timePickerEditInstance = flatpickr("#edit-sort-time", { 
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true 
+            });
+        }
 
-        logUserAction(data.username || "System", data.role || "User", "SAVE_MAINTENANCE", `เปิดจ๊อบใหม่ ${newJobId} เครื่อง ${data.machine}`);
-        return ContentService.createTextOutput(JSON.stringify({status: "success", message: `เปิดจ๊อบ ${newJobId} สำเร็จ!`, imageUrl: imageUrl})).setMimeType(ContentService.MimeType.JSON);
-      }
+        function setDefaultDateTime() {
+            const today = new Date(); 
+            const yyyy = today.getFullYear(); 
+            const mm = String(today.getMonth() + 1).padStart(2, '0'); 
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('sort-date').value = `${yyyy}-${mm}-${dd}`;
+            
+            if(timePickerInstance) {
+                timePickerInstance.setDate(new Date());
+            }
+        }
 
-    } catch (err) {
-      return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-    } finally {
-      lock.releaseLock(); 
-    }
-  }
-
-  // --- ส่วนที่ 2.5: ระบบงานเคลม RTV ---
-  if (action === "SAVE_RTV") {
-    let sheet = ss.getSheetByName("RTV_Data");
-    if (!sheet) {
-        sheet = ss.insertSheet("RTV_Data");
-        sheet.appendRow(["Timestamp", "Date", "Product", "Qty", "Remark", "Recorder"]);
-    }
-
-    const now = new Date();
-    sheet.appendRow([
-        now.toLocaleString('th-TH'),
-        data.date,
-        data.product,
-        data.qty,
-        data.remark,
-        data.recorder
-    ]);
-    
-    SpreadsheetApp.flush();
-    logUserAction(data.recorder, "System", "SAVE_RTV", `รับเคลม ${data.product} จำนวน ${data.qty} ชิ้น`);
-    return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Saved RTV"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // --- ระบบงานรอ Sort (บันทึก / แก้ไข / อัปเดตสถานะ QC) ---
-  if (action === "SAVE_SORTING") {
-      const lock = LockService.getScriptLock();
-      try {
-          lock.waitLock(10000);
-          let sheet = ss.getSheetByName("Sorting_Data");
-          if (!sheet) {
-              sheet = ss.insertSheet("Sorting_Data");
-              sheet.appendRow(["Timestamp", "Job_ID", "Date", "Product", "Symptom", "Qty", "Remark", "Recorder", "Status", "Closed_By", "Closed_Date", "FG_Qty", "NG_Qty"]);
-          }
-
-          const now = new Date();
-          const sortData = data.data;
-          let finalDate = sortData.date;
-          if (typeof finalDate === 'string' && finalDate.match(/\d{2}:\d{2}:\d{2}/)) finalDate = finalDate.substring(0, finalDate.lastIndexOf(':'));
-          const newJobId = "SRT-" + Utilities.formatDate(now, "GMT+7", "yyMMdd") + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-          sheet.appendRow([now.toLocaleString('th-TH'), newJobId, finalDate, sortData.product, sortData.symptom, sortData.qty, sortData.remark, sortData.recorder, "Pending", "", "", "", ""]);
-          SpreadsheetApp.flush();
-          logUserAction(sortData.recorder, "System", "SAVE_SORTING", `บันทึกงานรอ Sort ${sortData.product}`);
-          return ContentService.createTextOutput(JSON.stringify({status: "success", message: "บันทึกสำเร็จ", jobId: newJobId})).setMimeType(ContentService.MimeType.JSON);
-      } catch (err) { 
-          return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON); 
-      } finally { 
-          lock.releaseLock(); 
-      }
-  }
-
-  if (action === "EDIT_SORTING") {
-      const lock = LockService.getScriptLock();
-      try {
-          lock.waitLock(10000);
-          let sheet = ss.getSheetByName("Sorting_Data");
-          const rows = sheet.getDataRange().getValues();
-          const headers = rows[0];
-          let jobCol = headers.indexOf("Job_ID"), dateCol = headers.indexOf("Date") + 1, prodCol = headers.indexOf("Product") + 1;
-          let sympCol = headers.indexOf("Symptom") + 1, qtyCol = headers.indexOf("Qty") + 1, remCol = headers.indexOf("Remark") + 1;
-          
-          let foundRow = -1;
-          for (let i = 1; i < rows.length; i++) { 
-              if (rows[i][jobCol] === data.jobId) { foundRow = i + 1; break; } 
-          }
-
-          if (foundRow > -1) {
-              const sortData = data.data;
-              sheet.getRange(foundRow, dateCol).setValue(sortData.date);
-              sheet.getRange(foundRow, prodCol).setValue(sortData.product);
-              sheet.getRange(foundRow, sympCol).setValue(sortData.symptom);
-              sheet.getRange(foundRow, qtyCol).setValue(sortData.qty);
-              sheet.getRange(foundRow, remCol).setValue(sortData.remark);
-              SpreadsheetApp.flush();
-              return ContentService.createTextOutput(JSON.stringify({status: "success", message: "แก้ไขข้อมูลสำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-          } else { 
-              return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบรหัสงานนี้"})).setMimeType(ContentService.MimeType.JSON); 
-          }
-      } catch (err) { 
-          return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON); 
-      } finally { 
-          lock.releaseLock(); 
-      }
-  }
-
-  if (action === "UPDATE_SORTING") {
-      const lock = LockService.getScriptLock();
-      try {
-          lock.waitLock(10000);
-          let sheet = ss.getSheetByName("Sorting_Data");
-          const rows = sheet.getDataRange().getValues();
-          let headers = rows[0]; 
-          
-          // ตรวจสอบคอลัมน์ FG, NG
-          let fgColIdx = headers.indexOf("FG_Qty");
-          if (fgColIdx === -1) { 
-              fgColIdx = headers.length; 
-              sheet.getRange(1, fgColIdx + 1).setValue("FG_Qty"); 
-              headers.push("FG_Qty"); 
-          }
-          let ngColIdx = headers.indexOf("NG_Qty");
-          if (ngColIdx === -1) { 
-              ngColIdx = headers.length; 
-              sheet.getRange(1, ngColIdx + 1).setValue("NG_Qty"); 
-              headers.push("NG_Qty"); 
-          }
-
-          let jobCol = headers.indexOf("Job_ID"), statCol = headers.indexOf("Status") + 1;
-          let closedByCol = headers.indexOf("Closed_By") + 1, closedDateCol = headers.indexOf("Closed_Date") + 1;
-          let remCol = headers.indexOf("Remark") + 1;
-          let fgCol = fgColIdx + 1, ngCol = ngColIdx + 1;
-
-          let foundRow = -1;
-          for (let i = 1; i < rows.length; i++) { 
-              if (rows[i][jobCol] === data.jobId) { foundRow = i + 1; break; } 
-          }
-
-          if (foundRow > -1) {
-              const now = new Date();
-              sheet.getRange(foundRow, statCol).setValue(data.status);
-              
-              if (data.status === "Wait QC") {
-                  // Production กดปิดงาน ส่งให้ QC
-                  if (data.fgQty) sheet.getRange(foundRow, fgCol).setValue(data.fgQty);
-                  if (data.ngQty) sheet.getRange(foundRow, ngCol).setValue(data.ngQty);
-                  sheet.getRange(foundRow, closedDateCol).setValue(now.toLocaleString('th-TH')); // บันทึกเวลาที่ส่งตรวจ
-                  logUserAction(data.closedBy, "System", "SUBMIT_QC", `ส่งงาน ${data.jobId} ให้ QC ตรวจ`);
-              } 
-              else if (data.status === "Completed") {
-                  // QC กดยืนยันผ่าน
-                  sheet.getRange(foundRow, closedByCol).setValue(data.closedBy);
-                  sheet.getRange(foundRow, closedDateCol).setValue(now.toLocaleString('th-TH')); // บันทึกเวลาตอนอนุมัติสำเร็จ
-                  logUserAction(data.closedBy, "System", "QC_APPROVE", `QC อนุมัติงาน: ${data.jobId}`);
-              }
-              else if (data.status === "Rejected") {
-                  // QC กดตีกลับ (เพิ่มเหตุผลลงใน Remark)
-                  let oldRemark = sheet.getRange(foundRow, remCol).getValue();
-                  let rejectNote = `[QC ตีกลับ ${data.rejectTarget}: ${data.rejectReason}]`;
-                  sheet.getRange(foundRow, remCol).setValue(`${rejectNote} | ${oldRemark}`);
-                  logUserAction(data.closedBy, "System", "QC_REJECT", `QC ตีกลับงาน: ${data.jobId} (${data.rejectTarget})`);
-              }
-
-              SpreadsheetApp.flush();
-              return ContentService.createTextOutput(JSON.stringify({status: "success", message: "อัปเดตสถานะสำเร็จ"})).setMimeType(ContentService.MimeType.JSON);
-          } else {
-              return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบรหัสงานนี้"})).setMimeType(ContentService.MimeType.JSON);
-          }
-      } catch (err) {
-          return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-      } finally {
-          lock.releaseLock();
-      }
-  }
-
-  // --- ส่วนที่ 2.6: ระบบ Packing ลงพาเลท ---
-  if (action === "SAVE_PACKING") {
-      const lock = LockService.getScriptLock();
-      try {
-          lock.waitLock(10000);
-          
-          let sheet = ss.getSheetByName("Packing_Data");
-          if (!sheet) {
-              sheet = ss.insertSheet("Packing_Data");
-              sheet.appendRow(["Timestamp", "Date", "Pallet_No", "Category", "Machine", "Product", "Qty", "Recorder"]);
-          }
-
-          const now = new Date();
-          const timestamp = now.toLocaleString('th-TH');
-          const packData = data.data; 
-          
-          const items = packData.items || [];
-          
-          items.forEach(item => {
-              sheet.appendRow([
-                  timestamp,
-                  packData.date,
-                  packData.palletNo,
-                  packData.category,
-                  item.machine,
-                  item.product,
-                  item.qty,
-                  packData.recorder
-              ]);
-          });
-          
-          SpreadsheetApp.flush();
-          logUserAction(packData.recorder, "System", "SAVE_PACKING", `บันทึกข้อมูล Packing พาเลท ${packData.palletNo} จำนวน ${items.length} รายการ`);
-          
-          return ContentService.createTextOutput(JSON.stringify({status: "success", message: "บันทึกข้อมูล Packing สำเร็จ!"})).setMimeType(ContentService.MimeType.JSON);
-      } catch (err) {
-          return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-      } finally {
-          lock.releaseLock();
-      }
-  }
-
-  // --- ส่วนที่ 3: ระบบบันทึกข้อมูลการผลิต (Production) ---
-  if (action === 'SAVE_PRODUCTION' || action === 'SAVE_BATCH_PRODUCTION') {
-      const lock = LockService.getScriptLock();
-      try {
-        lock.waitLock(10000);
-
-        let sheet = ss.getSheetByName("Production_Data") || ss.insertSheet("Production_Data");
-        syncHeaders(sheet);
-        
-        const now = new Date();
-        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const getColIndex = (name) => headers.findIndex(h => h.toString().trim().toLowerCase() === name.toLowerCase());
-        
-        const items = data.items || [data];
-        const common = data.common || data;
-
-        items.forEach(item => {
-             const newRow = new Array(headers.length).fill("");
-             const mapData = (colName, value) => { const idx = getColIndex(colName); if (idx !== -1) newRow[idx] = value; };
-             
-             const machine = item.machine || common.machine || "-";
-             const product = item.productCode || common.productCode || "-";
-             const fg = parseInt(item.fgAmount || common.fgAmount) || 0;
-             const ngDetails = item.ngDetails || common.ngDetails || [];
-             
-             mapData("Timestamp", common.timestamp || now.toLocaleString('th-TH'));
-             mapData("Date", common.productionDate || Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd"));
-             mapData("Machine", machine);
-             mapData("Shift", common.shift || "A");
-             mapData("Recorder", common.recorder || "-");
-             mapData("Product", product);
-             mapData("Hour", common.hourSlot || "-");
-             mapData("FG", fg);
-             
-             const totalNgKg = ngDetails.reduce((sum, d) => sum + (parseFloat(d.qty) || 0), 0);
-             mapData("NG_Total", totalNgKg);
-             mapData("NG_Details_JSON", JSON.stringify(ngDetails));
-             mapData("Shift_Type", common.shiftType || "Day");
-             mapData("Batch_ID", common.batchId || "-");
-
-             sheet.appendRow(newRow);
-        });
-
-        SpreadsheetApp.flush();
-        return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Saved"})).setMimeType(ContentService.MimeType.JSON);
-      } catch (err) {
-        return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-      } finally {
-        lock.releaseLock();
-      }
-  }
-
-  else if (action === 'UNDO_BATCH_PRODUCTION') {
-      const lock = LockService.getScriptLock();
-      try {
-        lock.waitLock(10000);
-        let sheet = ss.getSheetByName("Production_Data");
-        if (!sheet) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Sheet not found"})).setMimeType(ContentService.MimeType.JSON);
-
-        const rows = sheet.getDataRange().getValues();
-        if (rows.length <= 1) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "No data to delete"})).setMimeType(ContentService.MimeType.JSON);
-
-        const headers = rows[0].map(h => h.toString().trim());
-        const batchIdCol = headers.indexOf('Batch_ID');
-
-        if (batchIdCol !== -1) {
-            let deletedCount = 0;
-            for (let i = rows.length - 1; i > 0; i--) {
-                if (rows[i][batchIdCol] === data.batchId) {
-                    sheet.deleteRow(i + 1); 
-                    deletedCount++;
+        async function fetchOptions() {
+            try {
+                const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS"); 
+                const data = await res.json();
+                
+                const selectSymptom = document.getElementById('sort-symptom');
+                const editSymptom = document.getElementById('edit-sort-symptom');
+                selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                editSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                
+                if (data.ngTypes && data.ngTypes.length > 0) {
+                    data.ngTypes.forEach(symptom => {
+                        selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
+                        editSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
+                    });
                 }
+
+                const selectMachine = document.getElementById('sort-machine');
+                const editMachine = document.getElementById('edit-sort-machine');
+                selectMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
+                editMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
+                
+                if (data.machineMapping) {
+                    globalMachineMapping = data.machineMapping; 
+                    let machineList = Object.keys(data.machineMapping).sort();
+                    
+                    if (machineList.length === 0) {
+                        machineList = Array.from({length: 16}, (_, i) => `CWM-${String(i+1).padStart(2,'0')}`);
+                    }
+                    
+                    machineList.forEach(m => {
+                        selectMachine.innerHTML += `<option value="${m}">${m}</option>`;
+                        editMachine.innerHTML += `<option value="${m}">${m}</option>`;
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to load options", err);
             }
-            if (deletedCount > 0) {
-                SpreadsheetApp.flush();
-                return ContentService.createTextOutput(JSON.stringify({status: "success", message: `Deleted ${deletedCount} rows`})).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        function onMachineChange(macId, prodId) {
+            const mac = document.getElementById(macId).value;
+            const modSelect = document.getElementById(prodId);
+            
+            if (mac && globalMachineMapping[mac] && globalMachineMapping[mac] !== 'Unassigned') {
+                modSelect.value = globalMachineMapping[mac]; 
             } else {
-                return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Batch ID not found"})).setMimeType(ContentService.MimeType.JSON);
+                modSelect.value = ""; 
             }
-        } else {
-            return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Batch_ID column missing"})).setMimeType(ContentService.MimeType.JSON);
-        }
-      } catch(err) {
-        return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()})).setMimeType(ContentService.MimeType.JSON);
-      } finally {
-        lock.releaseLock();
-      }
-  }
-
-  else if (action === 'SAVE_PLAN') {
-    let sheet = ss.getSheetByName("Plan_Data");
-    if (!sheet) {
-      sheet = ss.insertSheet("Plan_Data");
-      sheet.appendRow(["Date", "Product", "Target_Qty", "Shift", "Timestamp"]);
-    }
-    sheet.appendRow([
-      data.planDate,          
-      data.product,           
-      parseInt(data.qty) || 0,
-      data.shift || "All",    
-      new Date().toLocaleString('th-TH') 
-    ]);
-    SpreadsheetApp.flush();
-    return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Plan Saved"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  else if (action === 'SAVE_ASSIGNMENT') {
-      let logSheet = ss.getSheetByName("Machine_Assignment_Log");
-      if (!logSheet) {
-          logSheet = ss.insertSheet("Machine_Assignment_Log");
-          logSheet.appendRow(["Timestamp", "Recorder", "Machine", "Product"]);
-      }
-      
-      let configSheet = ss.getSheetByName("Config");
-      if (!configSheet) {
-          configSheet = ss.insertSheet("Config");
-          configSheet.appendRow(["Key", "Value"]);
-      }
-      
-      const configData = configSheet.getDataRange().getValues();
-      
-      if (data.logs && Array.isArray(data.logs)) {
-          data.logs.forEach(log => {
-              logSheet.appendRow([data.timestamp, data.recorder, log.machine, log.product]);
-              const keyName = "Machine_" + log.machine;
-              let found = false;
-              for(let i = 1; i < configData.length; i++) {
-                 if(configData[i][0] === keyName) {
-                    configSheet.getRange(i + 1, 2).setValue(log.product === "Unassigned" ? "" : log.product);
-                    found = true; 
-                    break;
-                 }
-              }
-              if(!found && log.product !== "Unassigned") {
-                 configSheet.appendRow([keyName, log.product]);
-                 configData.push([keyName, log.product]); 
-              }
-          });
-          SpreadsheetApp.flush();
-      }
-      
-      return ContentService.createTextOutput(JSON.stringify({status: "success", message: "Assignment Saved"})).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  else if (action === 'SAVE_NG_SYMPTOMS' || action === 'SAVE_RECORDERS' || action === 'SAVE_HIDDEN_WIDGETS') {
-     let configSheet = ss.getSheetByName("Config");
-     if (!configSheet) {
-       configSheet = ss.insertSheet("Config");
-       configSheet.appendRow(["Key", "Value"]);
-     }
-
-     let keyName = "";
-     if (action === 'SAVE_NG_SYMPTOMS') keyName = 'MASTER_NG_SYMPTOMS';
-     else if (action === 'SAVE_RECORDERS') keyName = 'MASTER_RECORDERS';
-     else if (action === 'SAVE_HIDDEN_WIDGETS') keyName = 'MASTER_HIDDEN_WIDGETS';
-
-     const valueStr = JSON.stringify(data.data);
-
-     const configData = configSheet.getDataRange().getValues();
-     let found = false;
-     for (let i = 1; i < configData.length; i++) {
-       if (configData[i][0] === keyName) {
-         configSheet.getRange(i + 1, 2).setValue(valueStr);
-         found = true;
-         break;
-       }
-     }
-     if (!found) {
-       configSheet.appendRow([keyName, valueStr]);
-     }
-     SpreadsheetApp.flush();
-
-     return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Cloud settings updated" })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Unknown Action"})).setMimeType(ContentService.MimeType.JSON);
-}
-
-// ==================================================
-// 🌟 ส่วนที่ 4: ฟังก์ชันช่วยเหลือ (Helper Functions)
-// ==================================================
-
-function logUserAction(username, role, actionType, details) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let logSheet = ss.getSheetByName("Logs");
-    if (!logSheet) {
-      logSheet = ss.insertSheet("Logs");
-      logSheet.appendRow(["Timestamp", "Username", "Role", "Action", "Details"]);
-    }
-    const timestamp = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd HH:mm:ss");
-    logSheet.appendRow([timestamp, username, role, actionType, details]);
-  } catch(e) { 
-    console.error("Log error: " + e); 
-  }
-}
-
-function syncHeaders(sheet) {
-  if (sheet.getLastRow() === 0) { sheet.appendRow(REQUIRED_COLUMNS); return; }
-  const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
-  const missingHeaders = REQUIRED_COLUMNS.filter(h => !currentHeaders.includes(h));
-  if (missingHeaders.length > 0) {
-    sheet.getRange(1, sheet.getLastColumn() + 1, 1, missingHeaders.length).setValues([missingHeaders]);
-  }
-}
-
-function getPcsFromKg(productName, kg) {
-    if (!kg || kg <= 0) return 0;
-    
-    let weightPerPc = 0.003; 
-    if (productName.includes("10A")) weightPerPc = 0.00228;
-    else if (productName.includes("16A")) weightPerPc = 0.00279;
-    else if (productName.includes("20A")) weightPerPc = 0.00357;
-    else if (productName.includes("25/32A")) weightPerPc = 0.005335; 
-    
-    return Math.round(kg / weightPerPc);
-}
-
-function getUniqueOptionsFromHistory() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Production_Data");
-  const configSheet = ss.getSheetByName("Config");
-  
-  const recorders = new Set();
-  const ngTypes = new Set();
-  const machineMapping = {};
-  let hiddenWidgets = [];
-  
-  if (configSheet) {
-    const configData = configSheet.getDataRange().getValues();
-    for (let i = 1; i < configData.length; i++) {
-      const key = String(configData[i][0]).trim();
-      const val = String(configData[i][1]).trim();
-      
-      if (key.startsWith("Machine_")) {
-          const machineName = key.replace("Machine_", "");
-          if (val !== "" && val !== "Unassigned") {
-              machineMapping[machineName] = val;
-          }
-      } 
-      else if (key === "MASTER_NG_SYMPTOMS" && val !== "") {
-         try { JSON.parse(val).forEach(item => ngTypes.add(capitalizeFirst(item))); } catch(e) {}
-      } 
-      else if (key === "MASTER_RECORDERS" && val !== "") {
-         try { JSON.parse(val).forEach(item => recorders.add(item)); } catch(e) {}
-      }
-      else if (key === "MASTER_HIDDEN_WIDGETS" && val !== "") {
-         try { hiddenWidgets = JSON.parse(val); } catch(e) {}
-      }
-    }
-  }
-
-  if (sheet) {
-      const data = sheet.getDataRange().getValues();
-      if (data.length > 1) {
-          const headers = data[0].map(h => h.toString().toLowerCase().trim());
-          const idxRec = headers.indexOf("recorder");
-          const idxJson = headers.indexOf("ng_details_json");
-          
-          const start = Math.max(1, data.length - 500);
-          for (let i = start; i < data.length; i++) {
-             if(idxRec !== -1 && data[i][idxRec]) recorders.add(String(data[i][idxRec]).trim());
-             if(idxJson !== -1 && data[i][idxJson]) {
-                try { JSON.parse(data[i][idxJson]).forEach(d => { if(d.type) ngTypes.add(capitalizeFirst(d.type)); }); } catch(e){}
-             }
-          }
-      }
-  }
-  
-  return { 
-      recorders: Array.from(recorders).sort(), 
-      ngTypes: Array.from(ngTypes).sort(), 
-      machineMapping: machineMapping,
-      hiddenWidgets: hiddenWidgets 
-  };
-}
-
-function getProductionTarget(startDate, endDate) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let planSheet = ss.getSheetByName("Plan_Data");
-  if (!planSheet) return { total: 0, byProduct: {} };
-  
-  const data = planSheet.getDataRange().getValues();
-  if (data.length <= 1) return { total: 0, byProduct: {} };
-  
-  let totalTarget = 0;
-  let byProduct = {};
-
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    let rowDate = row[0];
-    let rowDateStr = (rowDate instanceof Date) ? Utilities.formatDate(rowDate, "GMT+7", "yyyy-MM-dd") : String(rowDate).trim().substring(0, 10);
-    
-    if (rowDateStr >= startDate && rowDateStr <= endDate) {
-       let target = parseInt(row[1]); 
-       let product = "All";
-       
-       if (isNaN(target)) { 
-           product = String(row[1]).trim();
-           target = parseInt(row[2]) || 0;
-       } else {
-           target = target || 0;
-       }
-
-       totalTarget += target;
-       if (!byProduct[product]) byProduct[product] = 0;
-       byProduct[product] += target;
-    }
-  }
-  return { total: totalTarget, byProduct: byProduct };
-}
-
-// 🌟 สร้าง Dashboard 🌟
-function getAdvancedDashboardData(reqStart, reqEnd, reqShift, reqType) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Production_Data");
-  
-  const today = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
-  const startDate = reqStart || today;
-  const endDate = reqEnd || today;
-  
-  const filterShift = (reqShift || "All").trim();
-  const filterType = (reqType || "All").trim();
-
-  const DAY_HOURS = ["08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "OT 17:30-18:00", "OT 18:00-19:00", "OT 19:00-20:00"];
-  const NIGHT_HOURS = ["20:00-21:00", "21:00-22:00", "22:00-23:00", "23:00-00:00", "00:00-01:00", "01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00", "OT 05:00-06:30", "OT 06:00-07:30", "OT 07:00-08:00"];
-  
-  let displayLabels = (filterType === "Day") ? DAY_HOURS : (filterType === "Night" ? NIGHT_HOURS : [...DAY_HOURS, ...NIGHT_HOURS]);
-
-  const planData = getProductionTarget(startDate, endDate);
-
-  const result = {
-    productionTarget: planData.total,
-    productionPlanByModel: planData.byProduct,
-    totalFg: 0, 
-    totalNgPcs: 0, 
-    totalNgKg: 0,
-    hourlyLabels: displayLabels,
-    hourlyData: Array(displayLabels.length).fill(0),
-    hourlyNgPcsData: Array(displayLabels.length).fill(0),
-    hourlyByModel: {}, 
-    ngLabels: [], ngValuesPcs: [], ngValuesKg: [],
-    machineData: {}, productData: {}, dailyTrend: [],
-    maintenanceLogs: [], 
-    rtvLogs: []          
-  };
-
-  // --- อ่านข้อมูลแจ้งซ่อม (Maintenance) ---
-  const maintSheet = ss.getSheetByName("Maintenance_Data");
-  if (maintSheet) {
-    const maintData = maintSheet.getDataRange().getValues();
-    if (maintData.length > 1) {
-      const mHeaders = maintData[0];
-      const mCol = {};
-      mHeaders.forEach((name, idx) => mCol[name.toString().trim().toLowerCase()] = idx);
-
-      for (let i = 1; i < maintData.length; i++) {
-        const mRow = maintData[i];
-        const rawDate = mRow[mCol["date"]];
-        if (!rawDate) continue;
-        let mDateStr = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "yyyy-MM-dd") : String(rawDate).trim().substring(0, 10);
-
-        if (mDateStr >= startDate && mDateStr <= endDate) {
-          const mac = String(mRow[mCol["machine"]] || "").trim();
-          
-          // ดึงข้อมูลสร้าง Log Object
-          const logObj = {
-            jobId: mRow[mCol["job_id"]],
-            date: mDateStr,
-            machine: mac,
-            issueType: mRow[mCol["issue_type"]],
-            startTime: mRow[mCol["start_time"]],
-            endTime: mRow[mCol["end_time"]],
-            remark: mRow[mCol["remark"]],
-            imageUrl: mRow[mCol["image_url"]],
-            recorder: mRow[mCol["recorder"]]
-          };
-
-          result.maintenanceLogs.push(logObj);
-
-          if (!result.machineData[mac]) {
-              result.machineData[mac] = {
-                  fg: 0, ngTotalPcs: 0, ngTotalKg: 0,
-                  ngBreakdownPcs: {}, ngBreakdownKg: {}, remarks: [],
-                  hourlyFg: Array(displayLabels.length).fill(0),
-                  hourlyNgPcs: Array(displayLabels.length).fill(0),
-                  hourlyNgBreakdown: Array(displayLabels.length).fill(null).map(() => ({})), 
-                  daily: {}, maintenanceLogs: []
-              };
-          }
-          if (!result.machineData[mac].maintenanceLogs) result.machineData[mac].maintenanceLogs = [];
-          result.machineData[mac].maintenanceLogs.push(logObj);
-        }
-      }
-    }
-  }
-
-  // --- อ่านข้อมูลเคลม RTV ---
-  const rtvSheet = ss.getSheetByName("RTV_Data");
-  if (rtvSheet) {
-    const rtvData = rtvSheet.getDataRange().getValues();
-    if (rtvData.length > 1) {
-      const rHeaders = rtvData[0];
-      const rCol = {};
-      rHeaders.forEach((name, idx) => rCol[name.toString().trim().toLowerCase()] = idx);
-
-      for (let i = 1; i < rtvData.length; i++) {
-        const rRow = rtvData[i];
-        const rawDate = rRow[rCol["date"]];
-        if (!rawDate) continue;
-        let rDateStr = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "yyyy-MM-dd") : String(rawDate).trim().substring(0, 10);
-
-        if (rDateStr >= startDate && rDateStr <= endDate) {
-           result.rtvLogs.push({
-             date: rDateStr,
-             product: rRow[rCol["product"]],
-             qty: rRow[rCol["qty"]],
-             remark: rRow[rCol["remark"]],
-             recorder: rRow[rCol["recorder"]]
-           });
-        }
-      }
-    }
-  }
-
-  if (!sheet) return result;
-  const dataRange = sheet.getDataRange().getValues();
-  if (dataRange.length <= 1) return result; 
-  
-  const headers = dataRange[0];
-  const rows = dataRange.slice(1);
-  const col = {};
-  headers.forEach((name, index) => { col[name.toString().trim().toLowerCase()] = index; });
-  const getVal = (row, colName) => { const idx = col[colName.toLowerCase()]; return (idx !== undefined) ? row[idx] : undefined; };
-
-  const ngTempMapPcs = {};
-  const ngTempMapKg = {};
-  const dailyStats = {};
-
-  rows.forEach(row => {
-    try {
-      const rowDateRaw = getVal(row, "Date");
-      if (!rowDateRaw) return;
-      
-      let rowDateStr = (rowDateRaw instanceof Date) ? Utilities.formatDate(rowDateRaw, "GMT+7", "yyyy-MM-dd") : String(rowDateRaw).trim().substring(0, 10);
-      
-      if (rowDateStr >= startDate && rowDateStr <= endDate) {
-        const shiftName = String(getVal(row, "Shift") || "A").trim();
-        let shiftType = String(getVal(row, "Shift_Type") || "Day").trim();
-        if (shiftType === "Morning") shiftType = "Day"; 
-
-        if (filterShift !== "All" && shiftName !== filterShift) return;
-        if (filterType !== "All" && shiftType !== filterType) return;
-
-        const machine = String(getVal(row, "Machine") || "Unknown").trim();
-        const product = String(getVal(row, "Product") || "Unknown").trim();
-        const hour = String(getVal(row, "Hour") || "-").trim();
-        
-        const fg = parseInt(getVal(row, "FG")) || 0;
-        const ngKg = parseFloat(getVal(row, "NG_Total")) || 0;
-        const ngPcs = getPcsFromKg(product, ngKg);
-        
-        let details = []; try { const j = getVal(row, "NG_Details_JSON"); if(j) details = JSON.parse(j); } catch (e) {}
-
-        result.totalFg += fg;
-        result.totalNgKg += ngKg;
-        result.totalNgPcs += ngPcs;
-
-        if (!dailyStats[rowDateStr]) dailyStats[rowDateStr] = { fg: 0, ng: 0, ngBreakdown: {} };
-        dailyStats[rowDateStr].fg += fg;
-        dailyStats[rowDateStr].ng += ngPcs;
-
-        const hIdx = displayLabels.indexOf(hour);
-        if (hIdx !== -1) {
-           result.hourlyData[hIdx] += fg;
-           result.hourlyNgPcsData[hIdx] += ngPcs;
-           
-           if (!result.hourlyByModel[product]) {
-               result.hourlyByModel[product] = { fg: Array(displayLabels.length).fill(0), ng: Array(displayLabels.length).fill(0) };
-           }
-           result.hourlyByModel[product].fg[hIdx] += fg;
-           result.hourlyByModel[product].ng[hIdx] += ngPcs;
         }
 
-        if (!result.machineData[machine]) {
-          result.machineData[machine] = { 
-            fg: 0, ngTotalPcs: 0, ngTotalKg: 0, 
-            ngBreakdownPcs: {}, ngBreakdownKg: {}, remarks: [],
-            hourlyFg: Array(displayLabels.length).fill(0), 
-            hourlyNgPcs: Array(displayLabels.length).fill(0),
-            hourlyNgBreakdown: Array(displayLabels.length).fill(null).map(() => ({})), 
-            daily: {}, maintenanceLogs: [] 
-          };
-        }
-        
-        result.machineData[machine].fg += fg;
-        result.machineData[machine].ngTotalKg += ngKg;
-        result.machineData[machine].ngTotalPcs += ngPcs;
-        
-        if (hIdx !== -1) {
-            result.machineData[machine].hourlyFg[hIdx] += fg;
-            result.machineData[machine].hourlyNgPcs[hIdx] += ngPcs;
+        // ==========================================
+        // ฟังก์ชันคำนวณน้ำหนักและกรองข้อมูล
+        // ==========================================
+        function getWeightPerPc(productStr) {
+            if (!productStr) return 0.003; 
+            if (productStr.includes("10A")) return 0.00228; 
+            if (productStr.includes("16A")) return 0.00279; 
+            if (productStr.includes("20A")) return 0.00357; 
+            if (productStr.includes("25/32A")) return 0.005335; 
+            return 0.003;
         }
 
-        if (!result.machineData[machine].daily[rowDateStr]) {
-            result.machineData[machine].daily[rowDateStr] = { fg: 0, ngPcs: 0, ngBreakdown: {} };
-        }
-        result.machineData[machine].daily[rowDateStr].fg += fg;
-        result.machineData[machine].daily[rowDateStr].ngPcs += ngPcs;
-
-        if (!result.productData[product]) result.productData[product] = { fg: 0, ngTotalPcs: 0, ngBreakdownPcs: {} };
-        result.productData[product].fg += fg;
-        result.productData[product].ngTotalPcs += ngPcs;
-
-        details.forEach(item => {
-          if (item.type) {
-            const itemKg = parseFloat(item.qty) || 0;
-            const itemPcs = getPcsFromKg(product, itemKg);
-            const typeTrimmed = capitalizeFirst(item.type);
+        function parseQuantity(qtyStr, productStr) {
+            if (!qtyStr) return { pcs: 0, kg: 0, display: "-" };
+            const val = parseFloat(qtyStr); 
+            if (isNaN(val)) return { pcs: 0, kg: 0, display: qtyStr };
             
-            ngTempMapKg[typeTrimmed] = (ngTempMapKg[typeTrimmed] || 0) + itemKg;
-            ngTempMapPcs[typeTrimmed] = (ngTempMapPcs[typeTrimmed] || 0) + itemPcs;
+            const wpp = getWeightPerPc(productStr);
+            if (qtyStr.toLowerCase().includes('kg')) {
+                return { 
+                    pcs: Math.round(val/wpp), 
+                    kg: val, 
+                    display: `<span class="font-bold text-gray-800">${val.toFixed(2)} kg</span><br><span class="text-xs text-gray-500">(${Math.round(val/wpp).toLocaleString()} ชิ้น)</span>` 
+                };
+            } else {
+                return { 
+                    pcs: val, 
+                    kg: val*wpp, 
+                    display: `<span class="font-bold text-gray-800">${val.toLocaleString()} ชิ้น</span><br><span class="text-xs text-gray-500">(${(val*wpp).toFixed(2)} kg)</span>` 
+                };
+            }
+        }
+
+        function smartSearch(pattern, str) {
+            if (!pattern) return true; 
+            const terms = pattern.toLowerCase().trim().split(/\s+/); 
+            return terms.every(t => str.toLowerCase().includes(t));
+        }
+
+        function updateQCBadge() {
+            const qcCount = allPendingJobs.filter(j => j.status === 'Wait QC').length;
+            const badge = document.getElementById('qc-badge');
+            if (qcCount > 0) { 
+                badge.innerText = qcCount; 
+                badge.classList.remove('hidden'); 
+            } else { 
+                badge.classList.add('hidden'); 
+            }
+        }
+
+        // ==========================================
+        // ระบบจัดการขั้นตอน (Stage Management)
+        // ==========================================
+        function renderStageDropdown() {
+            const select = document.getElementById('sort-stage');
+            const editSelect = document.getElementById('edit-sort-stage');
             
-            result.machineData[machine].ngBreakdownKg[typeTrimmed] = (result.machineData[machine].ngBreakdownKg[typeTrimmed] || 0) + itemKg;
-            result.machineData[machine].ngBreakdownPcs[typeTrimmed] = (result.machineData[machine].ngBreakdownPcs[typeTrimmed] || 0) + itemPcs;
+            select.innerHTML = '<option value="">-- เลือกขั้นตอน --</option>';
+            editSelect.innerHTML = '<option value="">-- เลือกขั้นตอน --</option>';
             
-            if (hIdx !== -1) {
-                result.machineData[machine].hourlyNgBreakdown[hIdx][typeTrimmed] = 
-                    (result.machineData[machine].hourlyNgBreakdown[hIdx][typeTrimmed] || 0) + itemPcs;
+            currentStages.forEach(stage => {
+                select.innerHTML += `<option value="${stage}">${stage}</option>`;
+                editSelect.innerHTML += `<option value="${stage}">${stage}</option>`;
+            });
+        }
+
+        function openStageModal() {
+            renderStageList();
+            document.getElementById('manageStageModal').classList.remove('hidden');
+        }
+
+        function closeStageModal() {
+            document.getElementById('manageStageModal').classList.add('hidden');
+            renderStageDropdown();
+        }
+
+        function renderStageList() {
+            const list = document.getElementById('stage-list');
+            list.innerHTML = '';
+            currentStages.forEach((stage, index) => {
+                list.innerHTML += `
+                    <li class="flex justify-between items-center p-3 hover:bg-gray-100 text-sm border-b last:border-b-0">
+                        <span class="text-gray-800 font-medium">${stage}</span>
+                        <button type="button" onclick="removeStage(${index})" class="text-red-500 hover:text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold transition">ลบ</button>
+                    </li>
+                `;
+            });
+        }
+
+        function addStage() {
+            const input = document.getElementById('new-stage-input');
+            const val = input.value.trim();
+            if (val && !currentStages.includes(val)) {
+                currentStages.push(val);
+                localStorage.setItem('CWM_STAGES', JSON.stringify(currentStages));
+                input.value = '';
+                renderStageList();
+            } else if (currentStages.includes(val)) {
+                alert("มีตัวเลือกนี้อยู่แล้ว");
+            }
+        }
+
+        function removeStage(index) {
+            if (confirm(`คุณต้องการลบตัวเลือก "${currentStages[index]}" ใช่หรือไม่?`)) {
+                currentStages.splice(index, 1);
+                localStorage.setItem('CWM_STAGES', JSON.stringify(currentStages));
+                renderStageList();
+            }
+        }
+
+        // ==========================================
+        // การบันทึกและดึงข้อมูลหลัก (API)
+        // ==========================================
+        async function submitSortJob(e) {
+            e.preventDefault(); 
+            const btn = document.getElementById('btn-save-sort'); 
+            btn.disabled = true; 
+            btn.innerHTML = "⏳ กำลังบันทึก...";
+
+            const dateVal = document.getElementById('sort-date').value; 
+            const timeVal = document.getElementById('sort-time').value;
+            const machineVal = document.getElementById('sort-machine').value; 
+            const productVal = document.getElementById('sort-product').value;
+            const stageVal = document.getElementById('sort-stage').value;
+            const symptomVal = document.getElementById('sort-symptom').value;
+            
+            if (!symptomVal) {
+                alert("กรุณาเลือกอาการเสียจากระบบ");
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
             }
 
-            result.machineData[machine].daily[rowDateStr].ngBreakdown[typeTrimmed] = (result.machineData[machine].daily[rowDateStr].ngBreakdown[typeTrimmed] || 0) + itemPcs;
-            result.productData[product].ngBreakdownPcs[typeTrimmed] = (result.productData[product].ngBreakdownPcs[typeTrimmed] || 0) + itemPcs;
-            dailyStats[rowDateStr].ngBreakdown[typeTrimmed] = (dailyStats[rowDateStr].ngBreakdown[typeTrimmed] || 0) + itemPcs;
+            const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
+            const finalQty = `${document.getElementById('sort-qty').value} ${document.getElementById('sort-unit').value}`;
+            const finalDate = `${dateVal} ${timeVal}`;
             
-            if (item.remark) result.machineData[machine].remarks.push(`[${typeTrimmed}] ${item.remark}`);
-          }
-        });
-      }
-    } catch (e) { console.log("Row error: " + e); }
-  });
+            const isDuplicate = allPendingJobs.some(job => {
+                return job.date === finalDate && job.product === finalProduct && job.qty === finalQty;
+            });
 
-  result.ngLabels = Object.keys(ngTempMapPcs);
-  result.ngValuesPcs = Object.values(ngTempMapPcs);
-  result.ngValuesKg = result.ngLabels.map(label => ngTempMapKg[label]);
+            if (isDuplicate) {
+                alert(`⚠️ ตรวจพบข้อมูลซ้ำ!\nมีรายการนี้รอ Sort อยู่ในระบบแล้ว`);
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
 
-  const sortedDates = Object.keys(dailyStats).sort();
-  result.dailyTrend = sortedDates.map(date => {
-    const d = dailyStats[date];
-    const total = d.fg + d.ng;
-    const rate = total > 0 ? ((d.ng / total) * 100).toFixed(2) : 0;
-    return { date: date, fg: d.fg, ng: d.ng, ngRate: parseFloat(rate), ngBreakdown: d.ngBreakdown };
-  });
+            const remarkVal = document.getElementById('sort-remark').value;
+            const finalRemark = `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim();
 
-  return result;
-}
+            const payload = {
+                action: 'SAVE_SORTING',
+                data: {
+                    date: finalDate,
+                    product: finalProduct,
+                    symptom: symptomVal,
+                    qty: finalQty,
+                    remark: finalRemark,
+                    recorder: currentUser.name || currentUser.username,
+                    status: 'Pending'
+                }
+            };
 
-function debugSheetData() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Production_Data");
-  const today = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
-  
-  if (!sheet) return { error: "Production_Data not found" };
-  
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0];
-  const col = {};
-  headers.forEach((h, i) => col[h.toString().trim().toLowerCase()] = i);
-  
-  const stats = { 
-    serverToday: today,
-    datesFound: {}, shiftsFound: {}, typesFound: {}, totalRows: values.length - 1
-  };
-  
-  const detailedAnalysis = [];
-  for (let i = Math.max(1, values.length - 10); i < values.length; i++) {
-      const row = values[i];
-      const rawDate = row[col["date"]];
-      const dateStr = (rawDate instanceof Date) ? Utilities.formatDate(rawDate, "GMT+7", "yyyy-MM-dd") : String(rawDate).trim().substring(0, 10);
-      const shift = String(row[col["shift"]] || "").trim();
-      const type = String(row[col["shift_type"]] || "").trim();
-      
-      stats.datesFound[dateStr] = (stats.datesFound[dateStr] || 0) + 1;
-      stats.shiftsFound[shift] = (stats.shiftsFound[shift] || 0) + 1;
-      stats.typesFound[type] = (stats.typesFound[type] || 0) + 1;
-      
-      detailedAnalysis.push({
-          row: i + 1, date: dateStr, shift: shift, type: type, fg: row[col["fg"]], ng: row[col["ng_total"]], isMatchToday: dateStr === today
-      });
-  }
-  
-  return { status: "DEBUG_V3.55_Auth", summary: stats, last10Rows: detailedAnalysis };
-}
+            try {
+                const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    alert("✅ บันทึกงานรอ Sort สำเร็จ");
+                    document.getElementById('sortForm').reset();
+                    setDefaultDateTime(); 
+                    document.getElementById('sort-unit').value = 'kg';
+                    document.getElementById('sort-stage').value = '';
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch (err) {
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+            }
+        }
+
+        async function loadSortJobs() {
+            const tbody = document.getElementById('sort-table-body');
+            const tfoot = document.getElementById('sort-table-foot');
+            
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
+            tfoot.classList.add('hidden');
+
+            try {
+                const res = await fetch(SCRIPT_URL + "?action=GET_SORTING");
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    allPendingJobs = result.data;
+                    todaySortedData = result.todaySummary || []; // รับข้อมูลสรุปวันนี้
+                    updateQCBadge();
+                    renderTable();
+                    renderTodaySummary(); // วาดกล่องสรุปวันนี้
+                }
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
+            }
+        }
+
+        // ==========================================
+        // 🎯 ฟังก์ชันแสดงสรุปผลงาน Sort ของวันนี้
+        // ==========================================
+        function renderTodaySummary() {
+            const container = document.getElementById('today-summary-content');
+            if (!container) return;
+
+            if (!todaySortedData || todaySortedData.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-4 text-gray-500 font-bold">ยังไม่มีรายการที่ Sort เสร็จสิ้นและส่งไป QC ในวันนี้</div>`;
+                return;
+            }
+
+            let summaryByModel = {};
+            let totalFgKg = 0, totalFgPcs = 0;
+            let totalNgKg = 0, totalNgPcs = 0;
+
+            todaySortedData.forEach(job => {
+                let model = job.product.includes(" : ") ? job.product.split(" : ")[1].trim() : job.product;
+                
+                let fgInfo = parseQuantity(job.fgQty, model);
+                let ngInfo = parseQuantity(job.ngQty, model);
+
+                totalFgKg += fgInfo.kg;
+                totalFgPcs += fgInfo.pcs;
+                totalNgKg += ngInfo.kg;
+                totalNgPcs += ngInfo.pcs;
+
+                if(!summaryByModel[model]) summaryByModel[model] = { fgKg: 0, fgPcs: 0, ngKg: 0, ngPcs: 0 };
+                summaryByModel[model].fgKg += fgInfo.kg;
+                summaryByModel[model].fgPcs += fgInfo.pcs;
+                summaryByModel[model].ngKg += ngInfo.kg;
+                summaryByModel[model].ngPcs += ngInfo.pcs;
+            });
+
+            // กล่องรวมยอดทั้งหมด
+            let html = `
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-200 col-span-full md:col-span-1 flex flex-col justify-center items-center text-center shadow-sm">
+                    <h4 class="font-bold text-blue-800 mb-3 text-sm">🌟 ยอดส่ง QC รวมวันนี้</h4>
+                    <div class="w-full flex justify-between px-2 text-base">
+                        <div class="text-left"><span class="text-green-700 font-extrabold text-xl">FG:</span><br><span class="text-gray-800 font-bold">${totalFgKg.toFixed(2)} kg</span></div>
+                        <div class="text-right"><span class="text-red-700 font-extrabold text-xl">NG:</span><br><span class="text-gray-800 font-bold">${totalNgKg.toFixed(2)} kg</span></div>
+                    </div>
+                    <div class="w-full flex justify-between px-2 text-xs mt-1 font-medium">
+                        <span class="text-green-600">(${totalFgPcs.toLocaleString()} ชิ้น)</span>
+                        <span class="text-red-600">(${totalNgPcs.toLocaleString()} ชิ้น)</span>
+                    </div>
+                </div>
+            `;
+
+            // กล่องแยกตามรุ่น
+            const models = Object.keys(summaryByModel).sort();
+            if (models.length > 0) {
+                let modelListHtml = '<div class="col-span-full md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar pr-2">';
+                models.forEach(m => {
+                    let d = summaryByModel[m];
+                    modelListHtml += `
+                        <div class="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm hover:bg-white transition-colors">
+                            <div class="font-bold text-gray-800 text-sm border-b border-gray-200 pb-1 mb-2 truncate" title="${m}">🏷️ ${m}</div>
+                            <div class="flex justify-between text-sm">
+                                <div>
+                                    <span class="text-green-600 font-bold">FG: ${d.fgKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.fgPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                                <div class="text-right border-l pl-2">
+                                    <span class="text-red-600 font-bold">NG: ${d.ngKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.ngPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                modelListHtml += '</div>';
+                html += modelListHtml;
+            }
+
+            container.innerHTML = html;
+        }
+
+
+        // ==========================================
+        // การแสดงผลตาราง (Breakdown ค้นหา)
+        // ==========================================
+        function renderTable() {
+            const tbody = document.getElementById('sort-table-body'); 
+            const tfoot = document.getElementById('sort-table-foot');
+            const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
+            
+            let jobsToRender = allPendingJobs.filter(job => {
+                let showJob = false;
+                if (activeTab === 'prod') {
+                    showJob = (job.status === 'Pending' || job.status === 'Rejected');
+                } else if (activeTab === 'qc') {
+                    showJob = (job.status === 'Wait QC');
+                }
+
+                if (!showJob) return false;
+
+                let model = job.product;
+                if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
+                
+                const qtyInfo = parseQuantity(job.qty, model);
+                const kgStr = qtyInfo.kg.toFixed(2);
+                const pcsStr = qtyInfo.pcs.toString();
+
+                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`;
+                return smartSearch(searchInput, searchString);
+            });
+
+            if (jobsToRender.length === 0) {
+                if (searchInput !== '') {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-green-600 font-bold">🎉 กล่องข้อความว่างเปล่า ไม่มีงานค้าง</td></tr>';
+                }
+                tfoot.classList.add('hidden');
+                return;
+            }
+
+            tbody.innerHTML = '';
+            
+            let totalPcs = 0;
+            let totalKg = 0;
+            let breakdownModel = {};
+            let breakdownMachine = {};
+
+            jobsToRender.forEach(job => {
+                let machine = "ไม่ระบุเครื่อง";
+                let model = job.product;
+                
+                if (job.product.includes(" : ")) {
+                    const parts = job.product.split(" : ");
+                    machine = parts[0].trim();
+                    model = parts[1].trim();
+                }
+
+                const qtyInfo = parseQuantity(job.qty, model);
+                
+                totalPcs += qtyInfo.pcs;
+                totalKg += qtyInfo.kg;
+                
+                if (!breakdownModel[model]) breakdownModel[model] = { pcs: 0, kg: 0 };
+                breakdownModel[model].pcs += qtyInfo.pcs;
+                breakdownModel[model].kg += qtyInfo.kg;
+                
+                if (!breakdownMachine[machine]) breakdownMachine[machine] = { pcs: 0, kg: 0 };
+                breakdownMachine[machine].pcs += qtyInfo.pcs;
+                breakdownMachine[machine].kg += qtyInfo.kg;
+
+                let statusBadge = `<span class="status-badge status-Pending">รอ Sort</span>`;
+                let fgNgDisplay = "";
+                
+                if (job.status === 'Wait QC') {
+                    statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
+                    fgNgDisplay = `
+                        <div class="mt-2 p-1.5 bg-yellow-50 text-xs rounded border border-yellow-200 text-left">
+                            <b class="text-gray-700">แจ้งยอดจัดคัด:</b><br>
+                            <span class="text-green-700 font-bold">FG: ${job.fgQty}</span> | 
+                            <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
+                        </div>`;
+                } else if (job.status === 'Rejected') {
+                    statusBadge = `<span class="status-badge status-Rejected">ตีกลับ/แก้ไข</span>`;
+                }
+
+                let actionButtons = "";
+                if (activeTab === 'prod') {
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <button onclick="openEditModal('${job.jobId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded text-xs font-bold transition-colors border border-gray-300 shadow-sm w-full">
+                                ✏️ แก้ไขข้อมูล
+                            </button>
+                            <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 py-1.5 rounded text-xs font-bold transition-colors border border-blue-300 shadow-sm w-full">
+                                📤 ส่งยอด QC
+                            </button>
+                        </div>
+                    `;
+                } else if (activeTab === 'qc') {
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
+                                ✔ อนุมัติ (Pass)
+                            </button>
+                            <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
+                                ✖ ตีกลับ (Reject)
+                            </button>
+                        </div>
+                    `;
+                }
+
+                let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-gray-50 border-b">
+                        <td class="p-3 text-xs font-mono text-gray-500 align-top">
+                            ${job.jobId}<br>${statusBadge}
+                        </td>
+                        <td class="p-3 text-sm font-medium text-gray-800 align-top">${job.date}</td>
+                        <td class="p-3 text-sm font-bold text-blue-800 align-top">${job.product}</td>
+                        <td class="p-3 text-sm text-red-600 align-top">
+                            ${job.symptom}
+                            ${remarkHtml}
+                        </td>
+                        <td class="p-3 text-sm text-right leading-tight align-top">
+                            ${qtyInfo.display}
+                            ${fgNgDisplay}
+                        </td>
+                        <td class="p-3 text-center align-top">
+                            ${actionButtons}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            // สร้าง Tfoot Breakdown (สำหรับตาราง)
+            let modelHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
+            Object.keys(breakdownModel).sort().forEach(m => {
+                modelHtml += `
+                    <li class="flex justify-between items-center border-b border-gray-100 pb-1">
+                        <span class="font-semibold text-blue-900 truncate pr-2">${m}</span>
+                        <span class="text-right whitespace-nowrap"><span class="font-bold">${breakdownModel[m].kg.toFixed(2)} kg</span> <span class="text-xs text-gray-500">(${breakdownModel[m].pcs.toLocaleString()} ชิ้น)</span></span>
+                    </li>`;
+            });
+            modelHtml += '</ul>';
+
+            let machineHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
+            Object.keys(breakdownMachine).sort().forEach(m => {
+                machineHtml += `
+                    <li class="flex justify-between items-center border-b border-gray-100 pb-1">
+                        <span class="font-semibold text-gray-800">${m}</span>
+                        <span class="text-right whitespace-nowrap"><span class="font-bold">${breakdownMachine[m].kg.toFixed(2)} kg</span> <span class="text-xs text-gray-500">(${breakdownMachine[m].pcs.toLocaleString()} ชิ้น)</span></span>
+                    </li>`;
+            });
+            machineHtml += '</ul>';
+
+            tfoot.innerHTML = `
+                <tr>
+                    <td colspan="6" class="p-4 bg-gray-50 border-t-2 border-blue-300">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col justify-center items-center text-center">
+                                <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมรายการที่แสดงทั้งหมด</h4>
+                                <div class="text-4xl font-extrabold text-blue-800 mb-1">${totalKg.toFixed(2)} <span class="text-xl">kg</span></div>
+                                <div class="text-lg text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">${totalPcs.toLocaleString()} ชิ้น</div>
+                            </div>
+                            
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">📦 แยกตามรุ่น (Model)</h4>
+                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                    ${modelHtml}
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">⚙️ แยกตามเครื่อง (Machine)</h4>
+                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                                    ${machineHtml}
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </td>
+                </tr>
+            `;
+            tfoot.classList.remove('hidden');
+        }
+
+        // ==========================================
+        // Modal ปิดงาน / ส่งยอด (Production)
+        // ==========================================
+        function openCloseModal(jobId, productStr) {
+            document.getElementById('modal-job-id').value = jobId;
+            document.getElementById('modal-product-str').value = productStr;
+            document.getElementById('modal-job-id-text').innerText = jobId;
+            document.getElementById('modal-product-text').innerText = productStr;
+            
+            document.getElementById('modal-fg-qty').value = '';
+            document.getElementById('modal-ng-qty').value = '';
+            document.getElementById('modal-fg-convert').innerText = '';
+            document.getElementById('modal-ng-convert').innerText = '';
+            
+            document.getElementById('closeJobModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('closeJobModal').classList.add('hidden');
+        }
+
+        function calculateModalQty(type) {
+            const qtyInput = document.getElementById(`modal-${type}-qty`).value;
+            const unit = document.getElementById(`modal-${type}-unit`).value;
+            const productStr = document.getElementById('modal-product-str').value;
+            const convertText = document.getElementById(`modal-${type}-convert`);
+            
+            if (!qtyInput || isNaN(qtyInput) || parseFloat(qtyInput) <= 0) {
+                convertText.innerText = '';
+                return;
+            }
+            
+            const wpp = getWeightPerPc(productStr);
+            const val = parseFloat(qtyInput);
+            
+            if (unit === 'kg') {
+                const pcs = Math.round(val / wpp);
+                convertText.innerText = `≈ ${pcs.toLocaleString()} ชิ้น`;
+            } else {
+                const kg = val * wpp;
+                convertText.innerText = `≈ ${kg.toFixed(3)} kg`;
+            }
+        }
+
+        async function submitToQC(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-submit-qc');
+            btn.disabled = true;
+            btn.innerHTML = "⏳ กำลังส่งข้อมูล...";
+
+            const jobId = document.getElementById('modal-job-id').value;
+            const fgQtyRaw = document.getElementById('modal-fg-qty').value;
+            const fgUnit = document.getElementById('modal-fg-unit').value;
+            const fgQtyFinal = fgQtyRaw ? `${fgQtyRaw} ${fgUnit}` : `0 ${fgUnit}`;
+            
+            const ngQtyRaw = document.getElementById('modal-ng-qty').value;
+            const ngUnit = document.getElementById('modal-ng-unit').value;
+            const ngQtyFinal = ngQtyRaw ? `${ngQtyRaw} ${ngUnit}` : `0 ${ngUnit}`;
+
+            try {
+                const res = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'UPDATE_SORTING',
+                        jobId: jobId,
+                        status: 'Wait QC',
+                        closedBy: currentUser.name || currentUser.username,
+                        fgQty: fgQtyFinal, 
+                        ngQty: ngQtyFinal  
+                    })
+                });
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    alert("ส่งยอดให้ QC ตรวจสอบเรียบร้อยแล้ว");
+                    closeModal();
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch (err) {
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "📤 ส่งให้ QC ตรวจ";
+            }
+        }
+
+        // ==========================================
+        // Modal ตัดสินใจ (QC Inbox)
+        // ==========================================
+        async function approveQC(jobId) {
+            if(!confirm(`ยืนยัน อนุมัติผ่าน งานรหัส ${jobId}\n(ยอด FG และ NG จะถูกบันทึกเข้าระบบ) ใช่หรือไม่?`)) return;
+            
+            try {
+                const res = await fetch(SCRIPT_URL, { 
+                    method: 'POST', 
+                    body: JSON.stringify({ 
+                        action: 'UPDATE_SORTING', 
+                        jobId: jobId, 
+                        status: 'Completed', 
+                        closedBy: currentUser.name || currentUser.username
+                    })
+                });
+                const result = await res.json();
+                if(result.status === 'success'){
+                    alert("อนุมัติสำเร็จ!");
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) { 
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ"); 
+            }
+        }
+
+        function openRejectModal(jobId) {
+            document.getElementById('reject-job-id').value = jobId;
+            document.getElementById('rej-fg').checked = false; 
+            document.getElementById('rej-ng').checked = false;
+            document.getElementById('reject-reason').value = "";
+            document.getElementById('qcRejectModal').classList.remove('hidden');
+        }
+
+        function closeRejectModal() { 
+            document.getElementById('qcRejectModal').classList.add('hidden'); 
+        }
+
+        async function submitReject(e) {
+            e.preventDefault(); 
+            const isFg = document.getElementById('rej-fg').checked;
+            const isNg = document.getElementById('rej-ng').checked;
+            
+            if(!isFg && !isNg) {
+                return alert("กรุณาเลือกส่วนที่ต้องการตีกลับ (ยอด FG หรือ ยอด NG อย่างน้อย 1 อย่าง)");
+            }
+            
+            const btn = document.getElementById('btn-submit-reject'); 
+            btn.disabled = true; 
+            btn.innerHTML = "⏳ กำลังดำเนินการ...";
+            
+            const jobId = document.getElementById('reject-job-id').value;
+            const reason = document.getElementById('reject-reason').value.trim();
+            
+            let targets = [];
+            if(isFg) targets.push("FG"); 
+            if(isNg) targets.push("NG");
+            const targetStr = targets.join(" และ ");
+
+            try {
+                const res = await fetch(SCRIPT_URL, { 
+                    method: 'POST', 
+                    body: JSON.stringify({ 
+                        action: 'UPDATE_SORTING', 
+                        jobId: jobId, 
+                        status: 'Rejected', 
+                        closedBy: currentUser.name || currentUser.username, 
+                        rejectTarget: targetStr, 
+                        rejectReason: reason 
+                    })
+                });
+                const result = await res.json();
+                
+                if(result.status === 'success'){ 
+                    alert("ส่งกลับให้ Production แก้ไขเรียบร้อยแล้ว");
+                    closeRejectModal(); 
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) { 
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ"); 
+            } finally { 
+                btn.disabled = false; 
+                btn.innerHTML = "💥 ยืนยันการตีกลับ"; 
+            }
+        }
+
+        // ==========================================
+        // Modal แก้ไขข้อมูลตั้งต้น (Edit Job)
+        // ==========================================
+        function openEditModal(jobId) {
+            const job = allPendingJobs.find(j => j.jobId === jobId); 
+            if (!job) return alert("ไม่พบข้อมูลที่ต้องการแก้ไข");
+
+            document.getElementById('edit-job-id').value = job.jobId;
+
+            // วันที่และเวลา
+            let dDate = "", dTime = ""; 
+            if (job.date && job.date.includes(" ")) { 
+                const parts = job.date.split(" ");
+                dDate = parts[0]; 
+                dTime = parts[1]; 
+            } else {
+                dDate = job.date;
+            }
+            document.getElementById('edit-sort-date').value = dDate; 
+            if (timePickerEditInstance && dTime) {
+                timePickerEditInstance.setDate(dTime);
+            }
+
+            // เครื่องและรุ่น
+            let machine = "", product = job.product; 
+            if (job.product && job.product.includes(" : ")) { 
+                const pParts = job.product.split(" : ");
+                machine = pParts[0].trim(); 
+                product = pParts[1].trim(); 
+            }
+            document.getElementById('edit-sort-machine').value = machine; 
+            document.getElementById('edit-sort-product').value = product;
+
+            // ขั้นตอนและหมายเหตุ
+            let stage = "", remark = job.remark || ""; 
+            const rMatch = remark.match(/^\[พบที่:\s*(.+?)\]\s*(.*)$/); 
+            if (rMatch) { 
+                stage = rMatch[1]; 
+                remark = rMatch[2]; 
+            }
+            
+            const stageSelect = document.getElementById('edit-sort-stage');
+            let hasStageOption = Array.from(stageSelect.options).some(opt => opt.value === stage);
+            if (stage && !hasStageOption) {
+                stageSelect.innerHTML += `<option value="${stage}">${stage}</option>`;
+            }
+            stageSelect.value = stage; 
+            document.getElementById('edit-sort-remark').value = remark;
+
+            // อาการ
+            const symptomSelect = document.getElementById('edit-sort-symptom');
+            let hasSympOption = Array.from(symptomSelect.options).some(opt => opt.value === job.symptom);
+            if (job.symptom && !hasSympOption) {
+                symptomSelect.innerHTML += `<option value="${job.symptom}">${job.symptom}</option>`;
+            }
+            symptomSelect.value = job.symptom;
+
+            // จำนวนและหน่วย
+            let qty = "", unit = "kg";
+            if (job.qty && job.qty.includes(" ")) {
+                const qParts = job.qty.split(" ");
+                qty = qParts[0];
+                unit = qParts[1];
+            } else {
+                qty = parseFloat(job.qty) || "";
+                if (job.qty && job.qty.includes("ชิ้น")) unit = "ชิ้น";
+            }
+            document.getElementById('edit-sort-qty').value = qty; 
+            document.getElementById('edit-sort-unit').value = unit;
+
+            document.getElementById('editJobModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() { 
+            document.getElementById('editJobModal').classList.add('hidden'); 
+        }
+
+        async function submitEditJob(e) {
+            e.preventDefault(); 
+            const btn = document.getElementById('btn-submit-edit'); 
+            btn.disabled = true;
+            btn.innerHTML = "⏳ กำลังบันทึก...";
+
+            const jobId = document.getElementById('edit-job-id').value;
+            const dateVal = document.getElementById('edit-sort-date').value;
+            const timeVal = document.getElementById('edit-sort-time').value;
+            const machineVal = document.getElementById('edit-sort-machine').value;
+            const productVal = document.getElementById('edit-sort-product').value;
+            const stageVal = document.getElementById('edit-sort-stage').value;
+            const symptomVal = document.getElementById('edit-sort-symptom').value;
+            const qtyVal = document.getElementById('edit-sort-qty').value;
+            const unitVal = document.getElementById('edit-sort-unit').value;
+            let remarkVal = document.getElementById('edit-sort-remark').value;
+
+            const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
+            const finalQty = `${qtyVal} ${unitVal}`; 
+            const finalDate = `${dateVal} ${timeVal}`; 
+            const finalRemark = stageVal ? `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim() : remarkVal.trim();
+
+            const payload = { 
+                action: 'EDIT_SORTING', 
+                jobId: jobId, 
+                data: { 
+                    date: finalDate, 
+                    product: finalProduct, 
+                    symptom: symptomVal, 
+                    qty: finalQty, 
+                    remark: finalRemark, 
+                    recorder: currentUser.name || currentUser.username 
+                } 
+            };
+
+            try { 
+                const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) }); 
+                const result = await res.json(); 
+                if (result.status === 'success') { 
+                    alert("✅ บันทึกการแก้ไขสำเร็จ");
+                    closeEditModal(); 
+                    loadSortJobs(); 
+                } else {
+                    alert("❌ เกิดข้อผิดพลาด: " + result.message);
+                }
+            } catch(e) {
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+            } finally { 
+                btn.disabled = false; 
+                btn.innerHTML = "💾 บันทึกการแก้ไข";
+            }
+        }
+
+    </script>
+</body>
+</html>
