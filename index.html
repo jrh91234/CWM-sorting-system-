@@ -932,7 +932,8 @@
                 if (activeTab === 'prod') {
                     showJob = (job.status === 'Pending' || job.status === 'Rejected');
                 } else if (activeTab === 'qc') {
-                    showJob = (job.status === 'Wait QC');
+                    // ให้ QC มองเห็นงานที่รอ Sort (Pending) ด้วย
+                    showJob = (job.status === 'Wait QC' || job.status === 'Pending');
                 }
 
                 if (!showJob) return false;
@@ -1016,16 +1017,27 @@
                         </div>
                     `;
                 } else if (activeTab === 'qc') {
-                    actionButtons = `
-                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
-                            <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
-                                ✔ อนุมัติ (Pass)
-                            </button>
-                            <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
-                                ✖ ตีกลับ (Reject)
-                            </button>
-                        </div>
-                    `;
+                    if (job.status === 'Wait QC') {
+                        actionButtons = `
+                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                                <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
+                                    ✔ อนุมัติ (Pass)
+                                </button>
+                                <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
+                                    ✖ ตีกลับ (Reject)
+                                </button>
+                            </div>
+                        `;
+                    } else if (job.status === 'Pending') {
+                        // งานที่ยังอยู่สถานะ Pending ไม่ให้ QC กดอนุมัติ แต่แสดงสถานะให้ทราบ
+                        actionButtons = `
+                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                                <div class="bg-gray-100 text-gray-500 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-center w-full shadow-sm">
+                                    ⏳ รอฝั่งผลิตคัดแยก
+                                </div>
+                            </div>
+                        `;
+                    }
                 }
 
                 let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
@@ -1054,7 +1066,6 @@
 
             // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ 🌟
             let predictionHtml = '';
-            // คำนวณ Capacity แบบเฉลี่ยตามจำนวนวันที่กรองมา (ถ้าไม่ได้กรอง ถือเป็น 1 วัน)
             let daysFiltered = 1;
             if (filterStartDate && filterEndDate) {
                 const diffTime = Math.abs(new Date(filterEndDate) - new Date(filterStartDate));
