@@ -50,6 +50,13 @@
             z-index: 100 !important;
             overflow-y: auto !important;
         }
+
+        /* ซ่อน Scrollbar ย่อยด้านในเมื่อถูกขยายเต็มจอ ให้กางข้อมูลออกทั้งหมด */
+        .modal-maximized .custom-scrollbar,
+        .modal-maximized .overflow-y-auto {
+            max-height: none !important;
+            overflow-y: visible !important;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -543,8 +550,10 @@
             const innerContainer = modal.firstElementChild;
             if (innerContainer.classList.contains('modal-maximized')) {
                 innerContainer.classList.remove('modal-maximized');
+                document.body.style.overflow = ''; // คืนค่าการเลื่อนหน้าเว็บหลัก
             } else {
                 innerContainer.classList.add('modal-maximized');
+                document.body.style.overflow = 'hidden'; // ป้องกันหน้าเว็บหลักเลื่อนเวลาขยายเต็มจอ
             }
         };
 
@@ -553,8 +562,10 @@
             const container = document.getElementById(containerId);
             if (container.classList.contains('modal-maximized')) {
                 container.classList.remove('modal-maximized');
+                document.body.style.overflow = ''; // คืนค่าการเลื่อนหน้าเว็บหลัก
             } else {
                 container.classList.add('modal-maximized');
+                document.body.style.overflow = 'hidden'; // ป้องกันหน้าเว็บหลักเลื่อนเวลาขยายเต็มจอ
             }
         };
 
@@ -698,6 +709,12 @@
             }
         }
 
+        function smartSearch(pattern, str) {
+            if (!pattern) return true; 
+            const terms = pattern.toLowerCase().trim().split(/\s+/); 
+            return terms.every(t => str.toLowerCase().includes(t));
+        }
+
         function updateQCBadge() {
             const qcCount = allPendingJobs.filter(j => j.status === 'Wait QC').length;
             const badge = document.getElementById('qc-badge');
@@ -732,6 +749,7 @@
         function closeStageModal() {
             document.getElementById('manageStageModal').classList.add('hidden');
             document.getElementById('manageStageModal').firstElementChild.classList.remove('modal-maximized');
+            document.body.style.overflow = '';
             renderStageDropdown();
         }
 
@@ -1222,6 +1240,7 @@
         function closeModal() {
             document.getElementById('closeJobModal').classList.add('hidden');
             document.getElementById('closeJobModal').firstElementChild.classList.remove('modal-maximized');
+            document.body.style.overflow = '';
         }
 
         function calculateModalQty(type) {
@@ -1330,6 +1349,7 @@
         function closeRejectModal() { 
             document.getElementById('qcRejectModal').classList.add('hidden'); 
             document.getElementById('qcRejectModal').firstElementChild.classList.remove('modal-maximized');
+            document.body.style.overflow = '';
         }
 
         async function submitReject(e) {
@@ -1458,6 +1478,7 @@
         function closeEditModal() { 
             document.getElementById('editJobModal').classList.add('hidden'); 
             document.getElementById('editJobModal').firstElementChild.classList.remove('modal-maximized');
+            document.body.style.overflow = '';
         }
 
         async function submitEditJob(e) {
