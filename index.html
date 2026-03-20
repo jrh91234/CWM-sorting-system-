@@ -223,7 +223,7 @@
                     </div>
                 </div>
                 
-                <!-- 🌟 กรอบตารางแบบเลื่อนได้ (Scrollable Area 20 items max) 🌟 -->
+                <!-- 🌟 กรอบตารางแบบเลื่อนได้ (Scrollable Area) 🌟 -->
                 <div class="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar border border-gray-200 rounded-t-lg">
                     <table class="w-full text-left border-collapse">
                         <thead>
@@ -246,7 +246,7 @@
                     </table>
                 </div>
 
-                <!-- 🌟 Tfoot Breakdown (แยกออกมาเพื่อให้แสดงผลได้สวยงามและตารางเลื่อนได้สะดวก) 🌟 -->
+                <!-- 🌟 Tfoot Breakdown 🌟 -->
                 <div id="sort-table-foot" class="hidden border-x border-b border-gray-200 rounded-b-lg overflow-hidden">
                     <!-- สรุปยอดรวมและ Capacity จะถูกสร้างด้วย JS -->
                 </div>
@@ -477,17 +477,15 @@
         let currentUser = null;
         let globalMachineMapping = {}; 
         let allPendingJobs = []; 
-        let todaySortedData = []; // เก็บข้อมูลที่ Sort สรุปตามช่วงเวลา
+        let todaySortedData = []; 
         let activeTab = 'prod'; 
         
         let timePickerInstance = null;
         let timePickerEditInstance = null;
         
-        // ตัวแปรการกรองวันที่
         let filterStartDate = "";
         let filterEndDate = "";
         
-        // 🌟 ตัวแปรเก็บ Capacity (ประสิทธิภาพการคัดต่อวัน) 🌟
         let dailyCapacityPcs = 0;
         let dailyCapacityKg = 0;
 
@@ -547,7 +545,6 @@
             }
         };
 
-        // --- เพิ่มฟังก์ชันกรองวันที่ ---
         function applyDateFilter() {
             const s = document.getElementById('filter-start').value;
             const e = document.getElementById('filter-end').value;
@@ -582,7 +579,6 @@
             document.getElementById('summary-title').innerHTML = `🎯 สรุปยอดผลงาน Sort วันนี้`;
             loadSortJobs();
         }
-        // ------------------------------
 
         function initTimePicker() {
             timePickerInstance = flatpickr("#sort-time", { 
@@ -612,20 +608,19 @@
                 
                 const selectSymptom = document.getElementById('sort-symptom');
                 const editSymptom = document.getElementById('edit-sort-symptom');
-                selectSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
-                editSymptom.innerHTML = '<option value="">-- เลือกอาการเสีย --</option>';
+                let sympHtml = '<option value="">-- เลือกอาการเสีย --</option>';
                 
                 if (data.ngTypes && data.ngTypes.length > 0) {
                     data.ngTypes.forEach(symptom => {
-                        selectSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
-                        editSymptom.innerHTML += `<option value="${symptom}">${symptom}</option>`;
+                        sympHtml += `<option value="${symptom}">${symptom}</option>`;
                     });
                 }
+                selectSymptom.innerHTML = sympHtml;
+                editSymptom.innerHTML = sympHtml;
 
                 const selectMachine = document.getElementById('sort-machine');
                 const editMachine = document.getElementById('edit-sort-machine');
-                selectMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
-                editMachine.innerHTML = '<option value="">-- เลือกเครื่องจักร --</option>';
+                let macHtml = '<option value="">-- เลือกเครื่องจักร --</option>';
                 
                 if (data.machineMapping) {
                     globalMachineMapping = data.machineMapping; 
@@ -636,10 +631,11 @@
                     }
                     
                     machineList.forEach(m => {
-                        selectMachine.innerHTML += `<option value="${m}">${m}</option>`;
-                        editMachine.innerHTML += `<option value="${m}">${m}</option>`;
+                        macHtml += `<option value="${m}">${m}</option>`;
                     });
                 }
+                selectMachine.innerHTML = macHtml;
+                editMachine.innerHTML = macHtml;
             } catch (err) {
                 console.error("Failed to load options", err);
             }
@@ -657,7 +653,7 @@
         }
 
         // ==========================================
-        // ฟังก์ชันคำนวณน้ำหนักและกรองข้อมูล
+        // ฟังก์ชันคำนวณน้ำหนัก
         // ==========================================
         function getWeightPerPc(productStr) {
             if (!productStr) return 0.003; 
@@ -689,12 +685,6 @@
             }
         }
 
-        function smartSearch(pattern, str) {
-            if (!pattern) return true; 
-            const terms = pattern.toLowerCase().trim().split(/\s+/); 
-            return terms.every(t => str.toLowerCase().includes(t));
-        }
-
         function updateQCBadge() {
             const qcCount = allPendingJobs.filter(j => j.status === 'Wait QC').length;
             const badge = document.getElementById('qc-badge');
@@ -713,13 +703,12 @@
             const select = document.getElementById('sort-stage');
             const editSelect = document.getElementById('edit-sort-stage');
             
-            select.innerHTML = '<option value="">-- เลือกขั้นตอน --</option>';
-            editSelect.innerHTML = '<option value="">-- เลือกขั้นตอน --</option>';
-            
+            let html = '<option value="">-- เลือกขั้นตอน --</option>';
             currentStages.forEach(stage => {
-                select.innerHTML += `<option value="${stage}">${stage}</option>`;
-                editSelect.innerHTML += `<option value="${stage}">${stage}</option>`;
+                html += `<option value="${stage}">${stage}</option>`;
             });
+            select.innerHTML = html;
+            editSelect.innerHTML = html;
         }
 
         function openStageModal() {
@@ -734,16 +723,16 @@
         }
 
         function renderStageList() {
-            const list = document.getElementById('stage-list');
-            list.innerHTML = '';
+            let html = '';
             currentStages.forEach((stage, index) => {
-                list.innerHTML += `
+                html += `
                     <li class="flex justify-between items-center p-3 hover:bg-gray-100 text-sm border-b last:border-b-0">
                         <span class="text-gray-800 font-medium">${stage}</span>
                         <button type="button" onclick="removeStage(${index})" class="text-red-500 hover:text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold transition">ลบ</button>
                     </li>
                 `;
             });
+            document.getElementById('stage-list').innerHTML = html;
         }
 
         function addStage() {
@@ -864,8 +853,8 @@
                     todaySortedData = result.summaryData || result.todaySummary || []; 
                     
                     updateQCBadge();
-                    renderTodaySummary(); // วาดกล่องสรุปวันนี้ และคำนวณ Capacity ก่อน
-                    renderTable();        // ค่อยวาดตารางและพยากรณ์
+                    renderTodaySummary(); 
+                    renderTable();        
                 }
             } catch (err) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
@@ -878,7 +867,6 @@
         function renderTodaySummary() {
             const container = document.getElementById('today-summary-content');
             
-            // รีเซ็ตค่า Capacity ทุกครั้งที่มีการอัปเดต
             dailyCapacityPcs = 0;
             dailyCapacityKg = 0;
 
@@ -911,11 +899,9 @@
                 summaryByModel[model].ngPcs += ngInfo.pcs;
             });
 
-            // 🌟 บันทึกยอดความเร็วการทำงานของวันนี้
             dailyCapacityKg = totalFgKg + totalNgKg;
             dailyCapacityPcs = totalFgPcs + totalNgPcs;
 
-            // กล่องรวมยอดทั้งหมด
             let html = `
                 <div class="bg-blue-50 p-4 rounded-xl border border-blue-200 col-span-full md:col-span-1 flex flex-col justify-center items-center text-center shadow-sm">
                     <h4 class="font-bold text-blue-800 mb-3 text-sm">🌟 ยอดรวมช่วงเวลานี้</h4>
@@ -930,7 +916,6 @@
                 </div>
             `;
 
-            // กล่องแยกตามรุ่น
             const models = Object.keys(summaryByModel).sort();
             if (models.length > 0) {
                 let modelListHtml = '<div class="col-span-full md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar pr-2">';
@@ -966,7 +951,8 @@
         function renderTable() {
             const tbody = document.getElementById('sort-table-body'); 
             const tfoot = document.getElementById('sort-table-foot');
-            const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value : '';
+            const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value.trim().toLowerCase() : '';
+            const searchTerms = searchInput ? searchInput.split(/\s+/) : [];
             
             let jobsToRender = allPendingJobs.filter(job => {
                 let showJob = false;
@@ -979,15 +965,18 @@
 
                 if (!showJob) return false;
 
-                let model = job.product;
-                if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
-                
-                const qtyInfo = parseQuantity(job.qty, model);
-                const kgStr = qtyInfo.kg.toFixed(2);
-                const pcsStr = qtyInfo.pcs.toString();
+                if (searchTerms.length > 0) {
+                    let model = job.product;
+                    if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
+                    const qtyInfo = parseQuantity(job.qty, model);
+                    const kgStr = qtyInfo.kg.toFixed(2);
+                    const pcsStr = qtyInfo.pcs.toString();
 
-                const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`;
-                return smartSearch(searchInput, searchString);
+                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
+                    return searchTerms.every(t => searchString.includes(t));
+                }
+                
+                return true;
             });
 
             if (jobsToRender.length === 0) {
@@ -1000,8 +989,7 @@
                 return;
             }
 
-            tbody.innerHTML = '';
-            
+            let tbodyHtml = '';
             let totalPcs = 0;
             let totalKg = 0;
             let breakdownModel = {};
@@ -1059,7 +1047,6 @@
                             </div>
                         `;
                     } else {
-                        // สำหรับ QC ที่เข้ามาดูแท็บงาน Production เพื่อดูสถานะ
                         actionButtons = `
                             <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
                                 <div class="bg-gray-100 text-gray-500 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-center w-full shadow-sm">
@@ -1083,7 +1070,7 @@
 
                 let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
 
-                tbody.innerHTML += `
+                tbodyHtml += `
                     <tr class="hover:bg-gray-50 border-b">
                         <td class="p-3 text-xs font-mono text-gray-500 align-top">
                             ${job.jobId}<br>${statusBadge}
@@ -1104,6 +1091,9 @@
                     </tr>
                 `;
             });
+            
+            // วาดตารางครั้งเดียว (เพิ่มความเร็ว แก้ปัญหาปุ่มค้าง)
+            tbody.innerHTML = tbodyHtml;
 
             // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ 🌟
             let predictionHtml = '';
