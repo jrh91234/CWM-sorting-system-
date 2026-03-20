@@ -973,8 +973,8 @@
                 if (activeTab === 'prod') {
                     showJob = (job.status === 'Pending' || job.status === 'Rejected');
                 } else if (activeTab === 'qc') {
-                    // ให้ QC มองเห็นงานที่รอ Sort (Pending) ด้วย
-                    showJob = (job.status === 'Wait QC' || job.status === 'Pending');
+                    // ให้ QC มองเห็นงานที่รออนุมัติเท่านั้น ตามที่คุณต้องการ
+                    showJob = (job.status === 'Wait QC');
                 }
 
                 if (!showJob) return false;
@@ -1047,30 +1047,19 @@
 
                 let actionButtons = "";
                 if (activeTab === 'prod') {
-                    actionButtons = `
-                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
-                            <button onclick="openEditModal('${job.jobId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded text-xs font-bold transition-colors border border-gray-300 shadow-sm w-full">
-                                ✏️ แก้ไขข้อมูล
-                            </button>
-                            <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 py-1.5 rounded text-xs font-bold transition-colors border border-blue-300 shadow-sm w-full">
-                                📤 ส่งยอด QC
-                            </button>
-                        </div>
-                    `;
-                } else if (activeTab === 'qc') {
-                    if (job.status === 'Wait QC') {
+                    if (currentUser.role === 'Production' || currentUser.role === 'Admin') {
                         actionButtons = `
                             <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
-                                <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
-                                    ✔ อนุมัติ (Pass)
+                                <button onclick="openEditModal('${job.jobId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded text-xs font-bold transition-colors border border-gray-300 shadow-sm w-full">
+                                    ✏️ แก้ไขข้อมูล
                                 </button>
-                                <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
-                                    ✖ ตีกลับ (Reject)
+                                <button onclick="openCloseModal('${job.jobId}', '${job.product}')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 py-1.5 rounded text-xs font-bold transition-colors border border-blue-300 shadow-sm w-full">
+                                    📤 ส่งยอด QC
                                 </button>
                             </div>
                         `;
-                    } else if (job.status === 'Pending') {
-                        // งานที่ยังอยู่สถานะ Pending ไม่ให้ QC กดอนุมัติ แต่แสดงสถานะให้ทราบ
+                    } else {
+                        // สำหรับ QC ที่เข้ามาดูแท็บงาน Production เพื่อดูสถานะ
                         actionButtons = `
                             <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
                                 <div class="bg-gray-100 text-gray-500 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-center w-full shadow-sm">
@@ -1079,6 +1068,17 @@
                             </div>
                         `;
                     }
+                } else if (activeTab === 'qc') {
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
+                                ✔ อนุมัติ (Pass)
+                            </button>
+                            <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
+                                ✖ ตีกลับ (Reject)
+                            </button>
+                        </div>
+                    `;
                 }
 
                 let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
