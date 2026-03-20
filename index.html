@@ -34,7 +34,7 @@
         /* ล็อกหัวตาราง */
         thead th { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
 
-        /* สไตล์สำหรับ Maximize Modal */
+        /* สไตล์สำหรับ Maximize Modal และ Container */
         .modal-maximized {
             position: fixed !important;
             top: 0 !important;
@@ -186,10 +186,13 @@
         </div>
 
         <!-- 🌟 TODAY'S SUMMARY SECTION 🌟 -->
-        <div class="bg-white rounded-xl shadow-md p-6 mb-6 border-t-4 border-blue-500">
-            <h2 id="summary-title" class="text-lg font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
-                🎯 สรุปยอดผลงาน Sort วันนี้
-            </h2>
+        <div id="today-summary-container" class="bg-white rounded-xl shadow-md p-6 mb-6 border-t-4 border-blue-500 transition-all relative">
+            <div class="flex justify-between items-center border-b pb-2 mb-4">
+                <h2 id="summary-title" class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    🎯 สรุปยอดผลงาน Sort วันนี้
+                </h2>
+                <button type="button" onclick="toggleMaximizeContainer('today-summary-container')" class="text-gray-400 hover:text-blue-600 text-xl transition-colors" title="ขยายเต็มจอ/ย่อขนาด">🗖</button>
+            </div>
             <div id="today-summary-content" class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="col-span-full text-center py-4 text-gray-500">กำลังโหลดข้อมูล...</div>
             </div>
@@ -542,6 +545,16 @@
                 innerContainer.classList.remove('modal-maximized');
             } else {
                 innerContainer.classList.add('modal-maximized');
+            }
+        };
+
+        // --- ฟังก์ชันขยายกล่อง Container ทั่วไป ---
+        window.toggleMaximizeContainer = function(containerId) {
+            const container = document.getElementById(containerId);
+            if (container.classList.contains('modal-maximized')) {
+                container.classList.remove('modal-maximized');
+            } else {
+                container.classList.add('modal-maximized');
             }
         };
 
@@ -959,7 +972,6 @@
                 if (activeTab === 'prod') {
                     showJob = (job.status === 'Pending' || job.status === 'Rejected');
                 } else if (activeTab === 'qc') {
-                    // ให้ QC มองเห็นงานที่รออนุมัติเท่านั้น ตามที่คุณต้องการ
                     showJob = (job.status === 'Wait QC');
                 }
 
@@ -1092,7 +1104,6 @@
                 `;
             });
             
-            // วาดตารางครั้งเดียว (เพิ่มความเร็ว แก้ปัญหาปุ่มค้าง)
             tbody.innerHTML = tbodyHtml;
 
             // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ 🌟
