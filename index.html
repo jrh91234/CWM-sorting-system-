@@ -14,8 +14,8 @@
         .loader { border-top-color: #3498db; animation: spinner 1.5s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* สไตล์ Scrollbar เล็กสำหรับกล่องสรุป */
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        /* สไตล์ Scrollbar เล็กสำหรับกล่องสรุปและตาราง */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
@@ -30,6 +30,9 @@
         .status-WaitQC { background-color: #fef08a; color: #9a3412; border: 1px solid #fde047; }
         .status-Rejected { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
         .status-Completed { background-color: #dcfce7; color: #166534; border: 1px solid #86efac; }
+
+        /* ล็อกหัวตาราง */
+        thead th { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -164,8 +167,8 @@
                 </button>
             </div>
 
-            <div class="p-6">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 mb-4 gap-3 border-b">
+            <div class="p-6 pb-0">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 mb-2 gap-3">
                     <h2 class="text-lg font-bold text-gray-800" id="table-title">📋 รายการงานรอ Sort</h2>
                     
                     <div class="flex w-full md:w-auto gap-2">
@@ -178,31 +181,35 @@
                     </div>
                 </div>
                 
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse mb-4">
+                <!-- 🌟 กรอบตารางแบบเลื่อนได้ (Scrollable Area 20 items max) 🌟 -->
+                <div class="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar border border-gray-200 rounded-t-lg">
+                    <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="bg-gray-50 text-gray-600 text-sm uppercase">
-                                <th class="p-3 border-b">รหัสงาน</th>
-                                <th class="p-3 border-b sortable-header transition-colors group" onclick="toggleSort('date')">
+                            <tr class="bg-gray-100 text-gray-600 text-sm uppercase">
+                                <th class="p-3 border-b bg-gray-100">รหัสงาน</th>
+                                <th class="p-3 border-b bg-gray-100 sortable-header transition-colors group" onclick="toggleSort('date')">
                                     <div class="flex items-center justify-between">
                                         วันที่แจ้ง <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
                                     </div>
                                 </th>
-                                <th class="p-3 border-b">รุ่นสินค้า</th>
-                                <th class="p-3 border-b">อาการ (Symptom) / หมายเหตุ</th>
-                                <th class="p-3 border-b text-right">จำนวน</th>
-                                <th class="p-3 border-b text-center">จัดการ</th>
+                                <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
+                                <th class="p-3 border-b bg-gray-100">อาการ (Symptom) / หมายเหตุ</th>
+                                <th class="p-3 border-b text-right bg-gray-100">จำนวน</th>
+                                <th class="p-3 border-b text-center bg-gray-100">จัดการ</th>
                             </tr>
                         </thead>
-                        <tbody id="sort-table-body">
+                        <tbody id="sort-table-body" class="bg-white">
                             <tr><td colspan="6" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
                         </tbody>
-                        <tfoot id="sort-table-foot" class="bg-blue-50 hidden">
-                            <!-- สรุปยอดรวมจะถูกสร้างด้วย JS -->
-                        </tfoot>
                     </table>
                 </div>
+
+                <!-- 🌟 Tfoot Breakdown (แยกออกมาเพื่อให้แสดงผลได้สวยงามและตารางเลื่อนได้สะดวก) 🌟 -->
+                <div id="sort-table-foot" class="hidden border-x border-b border-gray-200 rounded-b-lg overflow-hidden">
+                    <!-- สรุปยอดรวมและ Capacity จะถูกสร้างด้วย JS -->
+                </div>
             </div>
+            <div class="h-6"></div> <!-- Padding bottom -->
         </div>
     </div>
 
@@ -421,6 +428,10 @@
         
         let timePickerInstance = null;
         let timePickerEditInstance = null;
+        
+        // 🌟 ตัวแปรเก็บ Capacity (ประสิทธิภาพการคัดต่อวัน) 🌟
+        let dailyCapacityPcs = 0;
+        let dailyCapacityKg = 0;
 
         const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG"];
         let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
@@ -738,10 +749,11 @@
                 
                 if (result.status === 'success') {
                     allPendingJobs = result.data;
-                    todaySortedData = result.todaySummary || []; // รับข้อมูลสรุปวันนี้
+                    todaySortedData = result.todaySummary || []; 
+                    
                     updateQCBadge();
-                    renderTable();
-                    renderTodaySummary(); // วาดกล่องสรุปวันนี้
+                    renderTodaySummary(); // วาดกล่องสรุปวันนี้ และคำนวณ Capacity ก่อน
+                    renderTable();        // ค่อยวาดตารางและพยากรณ์
                 }
             } catch (err) {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
@@ -749,10 +761,15 @@
         }
 
         // ==========================================
-        // 🎯 ฟังก์ชันแสดงสรุปผลงาน Sort ของวันนี้
+        // 🎯 ฟังก์ชันแสดงสรุปผลงาน Sort ของวันนี้ & คำนวณ Capacity
         // ==========================================
         function renderTodaySummary() {
             const container = document.getElementById('today-summary-content');
+            
+            // รีเซ็ตค่า Capacity ทุกครั้งที่มีการอัปเดต
+            dailyCapacityPcs = 0;
+            dailyCapacityKg = 0;
+
             if (!container) return;
 
             if (!todaySortedData || todaySortedData.length === 0) {
@@ -781,6 +798,10 @@
                 summaryByModel[model].ngKg += ngInfo.kg;
                 summaryByModel[model].ngPcs += ngInfo.pcs;
             });
+
+            // 🌟 บันทึกยอดความเร็วการทำงานของวันนี้
+            dailyCapacityKg = totalFgKg + totalNgKg;
+            dailyCapacityPcs = totalFgPcs + totalNgPcs;
 
             // กล่องรวมยอดทั้งหมด
             let html = `
@@ -828,7 +849,7 @@
 
 
         // ==========================================
-        // การแสดงผลตาราง (Breakdown ค้นหา)
+        // การแสดงผลตาราง (Breakdown & พยากรณ์ระยะเวลา)
         // ==========================================
         function renderTable() {
             const tbody = document.getElementById('sort-table-body'); 
@@ -960,7 +981,28 @@
                 `;
             });
 
-            // สร้าง Tfoot Breakdown (สำหรับตาราง)
+            // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ 🌟
+            let predictionHtml = '';
+            if (dailyCapacityPcs > 0) {
+                let daysLeft = (totalPcs / dailyCapacityPcs).toFixed(1);
+                predictionHtml = `
+                    <div class="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200 text-left w-full text-sm">
+                        <div class="text-xs text-purple-600 font-bold uppercase mb-1">⚡ ประสิทธิภาพ (Capacity)</div>
+                        <div class="text-gray-800">ความเร็วการคัด: <span class="font-bold text-purple-700">${dailyCapacityPcs.toLocaleString()} ชิ้น/วัน</span></div>
+                        <div class="text-gray-800 mt-1">⏳ คาดว่างานค้างจะเสร็จใน: <span class="font-bold text-purple-700 text-lg">${daysLeft} วัน</span></div>
+                    </div>
+                `;
+            } else {
+                predictionHtml = `
+                    <div class="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 text-left w-full text-sm">
+                        <div class="text-xs text-gray-500 font-bold uppercase mb-1">⚡ ประสิทธิภาพ (Capacity)</div>
+                        <div class="text-gray-600">ความเร็วการคัด: <span class="font-bold">0 ชิ้น/วัน</span></div>
+                        <div class="text-gray-600 mt-1">⏳ คาดว่างานค้างจะเสร็จใน: <span class="font-bold">- วัน</span></div>
+                    </div>
+                `;
+            }
+
+            // 🌟 2. สร้าง Tfoot Breakdown 🌟
             let modelHtml = '<ul class="text-sm text-gray-700 space-y-2 mt-2">';
             Object.keys(breakdownModel).sort().forEach(m => {
                 modelHtml += `
@@ -982,36 +1024,51 @@
             machineHtml += '</ul>';
 
             tfoot.innerHTML = `
-                <tr>
-                    <td colspan="6" class="p-4 bg-gray-50 border-t-2 border-blue-300">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            
-                            <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col justify-center items-center text-center">
-                                <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมรายการที่แสดงทั้งหมด</h4>
-                                <div class="text-4xl font-extrabold text-blue-800 mb-1">${totalKg.toFixed(2)} <span class="text-xl">kg</span></div>
-                                <div class="text-lg text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">${totalPcs.toLocaleString()} ชิ้น</div>
-                            </div>
-                            
-                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">📦 แยกตามรุ่น (Model)</h4>
-                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                                    ${modelHtml}
-                                </div>
-                            </div>
-
-                            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">⚙️ แยกตามเครื่อง (Machine)</h4>
-                                <div class="max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                                    ${machineHtml}
-                                </div>
-                            </div>
-                            
+                <div class="p-4 bg-gray-50 border-t-4 border-blue-400">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col justify-start items-center text-center">
+                            <h4 class="font-bold text-gray-500 mb-2 uppercase tracking-wider text-xs">📊 รวมรายการค้างทั้งหมด</h4>
+                            <div class="text-4xl font-extrabold text-blue-800 mb-1">${totalKg.toFixed(2)} <span class="text-xl">kg</span></div>
+                            <div class="text-lg text-blue-600 font-medium bg-blue-50 px-4 py-1 rounded-full mb-2">${totalPcs.toLocaleString()} ชิ้น</div>
+                            ${predictionHtml}
                         </div>
-                    </td>
-                </tr>
+                        
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                            <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">📦 งานค้างแยกตามรุ่น (Model)</h4>
+                            <div class="max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                ${modelHtml}
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                            <h4 class="font-bold text-gray-600 mb-2 border-b pb-2 flex items-center gap-2">⚙️ งานค้างแยกตามเครื่อง (Machine)</h4>
+                            <div class="max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                ${machineHtml}
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
             `;
             tfoot.classList.remove('hidden');
         }
+
+        window.toggleSort = function(field) {
+            if (currentSort.field === field) {
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.order = 'desc';
+            }
+            
+            document.getElementById('sort-icon-date').innerText = currentSort.order === 'asc' ? '▲' : '▼';
+            renderTable();
+        };
+
+        window.filterJobs = function() {
+            renderTable();
+        };
 
         // ==========================================
         // Modal ปิดงาน / ส่งยอด (Production)
