@@ -171,6 +171,13 @@
         <div class="flex flex-col md:flex-row gap-3 mb-6 bg-white p-4 rounded-xl shadow-md border-t-4 border-indigo-500 items-start md:items-end justify-between">
             <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                 <div class="w-full md:w-auto">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">กรองวันที่ตาม</label>
+                    <select id="filter-type" class="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-gray-50">
+                        <option value="reported">📅 วันที่แจ้งงาน</option>
+                        <option value="closed">✅ วันที่คัดเสร็จ (ปิดงาน)</option>
+                    </select>
+                </div>
+                <div class="w-full md:w-auto">
                     <label class="block text-xs font-bold text-gray-600 mb-1">ตั้งแต่วันที่</label>
                     <input type="date" id="filter-start" class="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 bg-gray-50">
                 </div>
@@ -187,8 +194,8 @@
                     </button>
                 </div>
             </div>
-            <div class="text-xs text-gray-500 hidden md:block">
-                * กรองตารางตาม <span class="font-bold">วันที่แจ้ง</span> <br> * กรองสรุปตาม <span class="font-bold">วันที่คัดเสร็จ</span>
+            <div class="text-xs text-gray-500 hidden md:block text-right">
+                * หากเลือกช่วงเวลา ระบบจะแสดงงาน <b>"ที่เสร็จสิ้นแล้ว"</b><br>ในแถบประวัติให้ดูย้อนหลังด้วย
             </div>
         </div>
 
@@ -217,6 +224,9 @@
                     🔬 กล่องข้อความตรวจงาน (QC Inbox) 
                     <span id="qc-badge" class="bg-red-500 text-white rounded-full px-2 py-0.5 text-xs hidden">0</span>
                 </button>
+                <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap">
+                    🕒 ประวัติงานเสร็จสิ้น (History)
+                </button>
             </div>
 
             <div class="p-6 pb-0">
@@ -241,13 +251,13 @@
                                 <th class="p-3 border-b bg-gray-100">รหัสงาน</th>
                                 <th class="p-3 border-b bg-gray-100 sortable-header transition-colors group" onclick="toggleSort('date')">
                                     <div class="flex items-center justify-between">
-                                        วันที่แจ้ง <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
+                                        วันที่ <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
                                     </div>
                                 </th>
                                 <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
                                 <th class="p-3 border-b bg-gray-100">อาการ (Symptom) / หมายเหตุ</th>
                                 <th class="p-3 border-b text-right bg-gray-100">จำนวน</th>
-                                <th class="p-3 border-b bg-gray-100">ผู้ลงข้อมูล</th>
+                                <th class="p-3 border-b bg-gray-100">ผู้แจ้ง / ปิดงาน</th>
                                 <th class="p-3 border-b text-center bg-gray-100">จัดการ</th>
                             </tr>
                         </thead>
@@ -496,6 +506,7 @@
         
         let filterStartDate = "";
         let filterEndDate = "";
+        let filterTypeStr = "reported"; // ประเภทการกรองเริ่มต้น
         
         let dailyCapacityPcs = 0;
         let dailyCapacityKg = 0;
@@ -541,7 +552,14 @@
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`tab-${tab}`).classList.add('active');
             
-            document.getElementById('table-title').innerText = tab === 'prod' ? '📦 งานรอ Sort / งานตีกลับ' : '🔬 กล่องข้อความตรวจสอบ (QC Inbox)';
+            if(tab === 'prod') {
+                document.getElementById('table-title').innerText = '📦 งานรอ Sort / งานตีกลับ';
+            } else if (tab === 'qc') {
+                document.getElementById('table-title').innerText = '🔬 กล่องข้อความตรวจสอบ (QC Inbox)';
+            } else if (tab === 'history') {
+                document.getElementById('table-title').innerText = '🕒 ประวัติงานเสร็จสิ้น (Completed)';
+            }
+            
             renderTable();
         }
 
@@ -585,6 +603,7 @@
             
             filterStartDate = s;
             filterEndDate = e;
+            filterTypeStr = document.getElementById('filter-type').value;
             
             const summaryTitle = document.getElementById('summary-title');
             if (filterStartDate && filterEndDate) {
@@ -599,10 +618,15 @@
         function clearDateFilter() {
             document.getElementById('filter-start').value = "";
             document.getElementById('filter-end').value = "";
+            document.getElementById('filter-type').value = "reported";
             filterStartDate = "";
             filterEndDate = "";
+            filterTypeStr = "reported";
             document.getElementById('summary-title').innerHTML = `🎯 สรุปยอดผลงาน Sort วันนี้`;
-            loadSortJobs();
+            
+            // กลับไปที่ Tab เดิม หรือถ้าอยู่ History ให้กลับไป Prod
+            if(activeTab === 'history') switchTab('prod');
+            else loadSortJobs();
         }
 
         function initTimePicker() {
@@ -868,7 +892,7 @@
             try {
                 let requestUrl = SCRIPT_URL + "?action=GET_SORTING";
                 if (filterStartDate && filterEndDate) {
-                    requestUrl += `&start=${filterStartDate}&end=${filterEndDate}`;
+                    requestUrl += `&start=${filterStartDate}&end=${filterEndDate}&filterBy=${filterTypeStr}`;
                 }
 
                 const res = await fetch(requestUrl);
@@ -880,7 +904,13 @@
                     
                     updateQCBadge();
                     renderTodaySummary(); 
-                    renderTable();        
+                    
+                    // สลับไปแท็บ History อัตโนมัติถ้ามีการค้นหาเพื่อดูข้อมูลอดีต
+                    if (filterStartDate && filterEndDate && activeTab === 'prod') {
+                        switchTab('history');
+                    } else {
+                        renderTable();
+                    }
                 }
             } catch (err) {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
@@ -986,6 +1016,8 @@
                     showJob = (job.status === 'Pending' || job.status === 'Rejected');
                 } else if (activeTab === 'qc') {
                     showJob = (job.status === 'Wait QC');
+                } else if (activeTab === 'history') {
+                    showJob = (job.status === 'Completed');
                 }
 
                 if (!showJob) return false;
@@ -997,7 +1029,7 @@
                     const kgStr = qtyInfo.kg.toFixed(2);
                     const pcsStr = qtyInfo.pcs.toString();
 
-                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
+                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.closedBy || ''} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
                     return searchTerms.every(t => searchString.includes(t));
                 }
                 
@@ -1008,7 +1040,7 @@
                 if (searchInput !== '') {
                     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการค้างในช่วงเวลาที่เลือก</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการในช่วงเวลาที่เลือก</td></tr>';
                 }
                 tfoot.classList.add('hidden');
                 return;
@@ -1032,19 +1064,23 @@
 
                 const qtyInfo = parseQuantity(job.qty, model);
                 
-                totalPcs += qtyInfo.pcs;
-                totalKg += qtyInfo.kg;
-                
-                if (!breakdownModel[model]) breakdownModel[model] = { pcs: 0, kg: 0 };
-                breakdownModel[model].pcs += qtyInfo.pcs;
-                breakdownModel[model].kg += qtyInfo.kg;
-                
-                if (!breakdownMachine[machine]) breakdownMachine[machine] = { pcs: 0, kg: 0 };
-                breakdownMachine[machine].pcs += qtyInfo.pcs;
-                breakdownMachine[machine].kg += qtyInfo.kg;
+                // คำนวณเฉพาะงานที่ยังค้าง (ใน History ไม่นำมาคำนวณคาดการณ์)
+                if (activeTab !== 'history') {
+                    totalPcs += qtyInfo.pcs;
+                    totalKg += qtyInfo.kg;
+                    
+                    if (!breakdownModel[model]) breakdownModel[model] = { pcs: 0, kg: 0 };
+                    breakdownModel[model].pcs += qtyInfo.pcs;
+                    breakdownModel[model].kg += qtyInfo.kg;
+                    
+                    if (!breakdownMachine[machine]) breakdownMachine[machine] = { pcs: 0, kg: 0 };
+                    breakdownMachine[machine].pcs += qtyInfo.pcs;
+                    breakdownMachine[machine].kg += qtyInfo.kg;
+                }
 
                 let statusBadge = `<span class="status-badge status-Pending">รอ Sort</span>`;
                 let fgNgDisplay = "";
+                let actionButtons = "";
                 
                 if (job.status === 'Wait QC') {
                     statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
@@ -1056,9 +1092,23 @@
                         </div>`;
                 } else if (job.status === 'Rejected') {
                     statusBadge = `<span class="status-badge status-Rejected">ตีกลับ/แก้ไข</span>`;
+                } else if (job.status === 'Completed') {
+                    statusBadge = `<span class="status-badge status-Completed">เสร็จสิ้น</span>`;
+                    fgNgDisplay = `
+                        <div class="mt-2 p-1.5 bg-green-50 text-xs rounded border border-green-200 text-left">
+                            <b class="text-gray-700">ยอดที่อนุมัติ:</b><br>
+                            <span class="text-green-700 font-bold">FG: ${job.fgQty}</span> | 
+                            <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
+                        </div>`;
+                    actionButtons = `
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <div class="bg-green-100 text-green-700 py-2 rounded-lg text-[11px] font-bold border border-green-200 text-center w-full shadow-sm">
+                                ✔ จบงานแล้ว
+                            </div>
+                        </div>
+                    `;
                 }
 
-                let actionButtons = "";
                 if (activeTab === 'prod') {
                     if (currentUser.role === 'Production' || currentUser.role === 'Admin') {
                         actionButtons = `
@@ -1094,13 +1144,26 @@
                 }
 
                 let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
+                
+                // สร้าง HTML แสดงรายชื่อผู้แจ้ง / ผู้ปิด
+                let recorderHtml = `
+                    <div class="flex flex-col gap-1 text-left">
+                        <span class="text-gray-700">📝 แจ้ง: <span class="font-bold">${job.recorder || '-'}</span></span>
+                        ${job.closedBy ? `<span class="text-blue-700">✅ ปิด: <span class="font-bold">${job.closedBy}</span></span>` : ''}
+                    </div>
+                `;
+
+                let dateDisplay = job.date;
+                if (job.status === 'Completed' && job.closedDate) {
+                    dateDisplay = `<span class="text-gray-500 line-through text-xs">${job.date}</span><br><span class="text-green-700 font-bold">${job.closedDate}</span>`;
+                }
 
                 tbodyHtml += `
                     <tr class="hover:bg-gray-50 border-b">
                         <td class="p-3 text-xs font-mono text-gray-500 align-top">
                             ${job.jobId}<br>${statusBadge}
                         </td>
-                        <td class="p-3 text-sm font-medium text-gray-800 align-top">${job.date}</td>
+                        <td class="p-3 text-sm font-medium text-gray-800 align-top whitespace-nowrap">${dateDisplay}</td>
                         <td class="p-3 text-sm font-bold text-blue-800 align-top">${job.product}</td>
                         <td class="p-3 text-sm text-red-600 align-top">
                             ${job.symptom}
@@ -1110,8 +1173,8 @@
                             ${qtyInfo.display}
                             ${fgNgDisplay}
                         </td>
-                        <td class="p-3 text-xs text-gray-600 align-top font-medium whitespace-nowrap">
-                            👤 ${job.recorder || '-'}
+                        <td class="p-3 text-xs align-top whitespace-nowrap">
+                            ${recorderHtml}
                         </td>
                         <td class="p-3 text-center align-top">
                             ${actionButtons}
@@ -1122,7 +1185,13 @@
             
             tbody.innerHTML = tbodyHtml;
 
-            // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ 🌟
+            // ถ้าเป็นแท็บ History ไม่ต้องแสดงสรุปงานค้าง
+            if (activeTab === 'history') {
+                tfoot.classList.add('hidden');
+                return;
+            }
+
+            // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ (เฉพาะงานค้าง) 🌟
             let predictionHtml = '';
             let daysFiltered = 1;
             if (filterStartDate && filterEndDate) {
