@@ -257,7 +257,7 @@
                                 <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
                                 <th class="p-3 border-b bg-gray-100">อาการ (Symptom) / หมายเหตุ</th>
                                 <th class="p-3 border-b text-right bg-gray-100">จำนวน</th>
-                                <th class="p-3 border-b bg-gray-100">ผู้แจ้ง / ปิดงาน</th>
+                                <th class="p-3 border-b bg-gray-100">ผู้แจ้ง / คัด / QC</th>
                                 <th class="p-3 border-b text-center bg-gray-100">จัดการ</th>
                             </tr>
                         </thead>
@@ -1029,7 +1029,7 @@
                     const kgStr = qtyInfo.kg.toFixed(2);
                     const pcsStr = qtyInfo.pcs.toString();
 
-                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.closedBy || ''} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
+                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.sorter || ''} ${job.closedBy || ''} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
                     return searchTerms.every(t => searchString.includes(t));
                 }
                 
@@ -1145,11 +1145,12 @@
 
                 let remarkHtml = job.remark ? `<div class="text-xs text-gray-500 mt-1 line-clamp-3 bg-gray-50 p-1 rounded border">${job.remark}</div>` : '';
                 
-                // สร้าง HTML แสดงรายชื่อผู้แจ้ง / ผู้ปิด
+                // สร้าง HTML แสดงรายชื่อผู้แจ้ง / ผู้คัด / ผู้ปิด
                 let recorderHtml = `
                     <div class="flex flex-col gap-1 text-left">
-                        <span class="text-gray-700">📝 แจ้ง: <span class="font-bold">${job.recorder || '-'}</span></span>
-                        ${job.closedBy ? `<span class="text-blue-700">✅ ปิด: <span class="font-bold">${job.closedBy}</span></span>` : ''}
+                        <span class="text-gray-700" title="ผู้แจ้งงานเริ่มแรก">📝 แจ้ง: <span class="font-bold">${job.recorder || '-'}</span></span>
+                        ${job.sorter ? `<span class="text-purple-700" title="ผู้ส่งยอดคัดให้ QC">📦 คัด: <span class="font-bold">${job.sorter}</span></span>` : ''}
+                        ${job.closedBy ? `<span class="text-green-700" title="QC ผู้อนุมัติงาน">✅ QC: <span class="font-bold">${job.closedBy}</span></span>` : ''}
                     </div>
                 `;
 
