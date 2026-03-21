@@ -247,11 +247,12 @@
                                 <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
                                 <th class="p-3 border-b bg-gray-100">อาการ (Symptom) / หมายเหตุ</th>
                                 <th class="p-3 border-b text-right bg-gray-100">จำนวน</th>
+                                <th class="p-3 border-b bg-gray-100">ผู้ลงข้อมูล</th>
                                 <th class="p-3 border-b text-center bg-gray-100">จัดการ</th>
                             </tr>
                         </thead>
                         <tbody id="sort-table-body" class="bg-white">
-                            <tr><td colspan="6" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                            <tr><td colspan="7" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -709,12 +710,6 @@
             }
         }
 
-        function smartSearch(pattern, str) {
-            if (!pattern) return true; 
-            const terms = pattern.toLowerCase().trim().split(/\s+/); 
-            return terms.every(t => str.toLowerCase().includes(t));
-        }
-
         function updateQCBadge() {
             const qcCount = allPendingJobs.filter(j => j.status === 'Wait QC').length;
             const badge = document.getElementById('qc-badge');
@@ -867,7 +862,7 @@
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
             
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
             tfoot.classList.add('hidden');
 
             try {
@@ -888,7 +883,7 @@
                     renderTable();        
                 }
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
             }
         }
 
@@ -1011,9 +1006,9 @@
 
             if (jobsToRender.length === 0) {
                 if (searchInput !== '') {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการค้างในช่วงเวลาที่เลือก</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการค้างในช่วงเวลาที่เลือก</td></tr>';
                 }
                 tfoot.classList.add('hidden');
                 return;
@@ -1115,6 +1110,9 @@
                             ${qtyInfo.display}
                             ${fgNgDisplay}
                         </td>
+                        <td class="p-3 text-xs text-gray-600 align-top font-medium whitespace-nowrap">
+                            👤 ${job.recorder || '-'}
+                        </td>
                         <td class="p-3 text-center align-top">
                             ${actionButtons}
                         </td>
@@ -1174,6 +1172,7 @@
             machineHtml += '</ul>';
 
             tfoot.innerHTML = `
+                <tr><td colspan="7" class="p-0">
                 <div class="p-4 bg-gray-50 border-t-4 border-blue-400">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         
@@ -1200,6 +1199,7 @@
                         
                     </div>
                 </div>
+                </td></tr>
             `;
             tfoot.classList.remove('hidden');
         }
