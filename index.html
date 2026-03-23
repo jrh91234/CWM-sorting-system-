@@ -951,12 +951,14 @@
             }
 
             let summaryByModel = {};
+            let summaryBySymptom = {};
             let totalFgKg = 0, totalFgPcs = 0;
             let totalNgKg = 0, totalNgPcs = 0;
 
             todaySortedData.forEach(job => {
                 let model = job.product.includes(" : ") ? job.product.split(" : ")[1].trim() : job.product;
-                
+                let symptom = job.symptom || "ไม่ระบุ";
+
                 let fgInfo = parseQuantity(job.fgQty, model);
                 let ngInfo = parseQuantity(job.ngQty, model);
 
@@ -970,6 +972,13 @@
                 summaryByModel[model].fgPcs += fgInfo.pcs;
                 summaryByModel[model].ngKg += ngInfo.kg;
                 summaryByModel[model].ngPcs += ngInfo.pcs;
+
+                if(!summaryBySymptom[symptom]) summaryBySymptom[symptom] = { fgKg: 0, fgPcs: 0, ngKg: 0, ngPcs: 0, count: 0 };
+                summaryBySymptom[symptom].fgKg += fgInfo.kg;
+                summaryBySymptom[symptom].fgPcs += fgInfo.pcs;
+                summaryBySymptom[symptom].ngKg += ngInfo.kg;
+                summaryBySymptom[symptom].ngPcs += ngInfo.pcs;
+                summaryBySymptom[symptom].count += 1;
             });
 
             dailyCapacityKg = totalFgKg + totalNgKg;
@@ -1012,6 +1021,40 @@
                 });
                 modelListHtml += '</div>';
                 html += modelListHtml;
+            }
+
+            // แสดงยอดแบ่งตามอาการ (Symptom Breakdown)
+            const symptoms = Object.keys(summaryBySymptom).sort();
+            if (symptoms.length > 0) {
+                let symptomHtml = `
+                    <div class="col-span-full mt-2">
+                        <h4 class="font-bold text-purple-800 text-sm mb-2">🔍 แบ่งตามอาการ</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-40 overflow-y-auto custom-scrollbar pr-2">`;
+                symptoms.forEach(s => {
+                    let d = summaryBySymptom[s];
+                    let totalKg = d.fgKg + d.ngKg;
+                    let totalPcs = d.fgPcs + d.ngPcs;
+                    symptomHtml += `
+                        <div class="bg-purple-50 p-3 rounded-lg border border-purple-200 shadow-sm hover:bg-white transition-colors">
+                            <div class="font-bold text-purple-800 text-sm border-b border-purple-200 pb-1 mb-2 truncate" title="${s}">⚠️ ${s} <span class="text-xs font-normal text-gray-500">(${d.count} รายการ)</span></div>
+                            <div class="flex justify-between text-sm">
+                                <div>
+                                    <span class="text-green-600 font-bold">FG: ${d.fgKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.fgPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                                <div class="text-center border-l border-r px-2">
+                                    <span class="text-blue-600 font-bold">รวม: ${totalKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${totalPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-red-600 font-bold">NG: ${d.ngKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.ngPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                symptomHtml += '</div></div>';
+                html += symptomHtml;
             }
 
             container.innerHTML = html;
