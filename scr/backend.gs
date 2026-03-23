@@ -224,6 +224,7 @@ function doGet(e) {
             summaryJobs.push({
                 jobId: r[jobCol],
                 product: r[prodCol],
+                symptom: r[sympCol] || "",
                 fgQty: fgCol > -1 ? r[fgCol] : "",
                 ngQty: ngCol > -1 ? r[ngCol] : "",
                 status: currentStatus
