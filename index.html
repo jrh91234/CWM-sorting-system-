@@ -9,6 +9,9 @@
     <!-- เพิ่ม Flatpickr CSS สำหรับหน้าต่างเลือกเวลาแบบ 24 ชม. -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     
+    <!-- เพิ่มไลบรารี SheetJS สำหรับ Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
     <style>
         body { font-family: 'Sarabun', sans-serif; }
         .loader { border-top-color: #3498db; animation: spinner 1.5s linear infinite; }
@@ -57,6 +60,43 @@
             max-height: none !important;
             overflow-y: visible !important;
         }
+
+        /* 🖨️ สไตล์สำหรับการ Print (Auto Report) */
+        @media print {
+            @page { size: landscape; margin: 10mm; }
+            body { background-color: white !important; font-size: 11px !important; }
+            
+            /* ซ่อนส่วนที่ไม่จำเป็นเวลาปริ้น */
+            nav, .no-print, #manageStageModal, #editJobModal, #closeJobModal, #qcRejectModal { 
+                display: none !important; 
+            }
+            
+            /* ลบ shadow และปรับ container ให้เต็ม */
+            .max-w-7xl { max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .bg-white { box-shadow: none !important; border: 1px solid #ddd !important; padding: 10px !important; margin-bottom: 10px !important; }
+            .bg-gray-100 { background-color: white !important; }
+            
+            /* กาง Scrollbar ทั้งหมดออกให้เห็นข้อมูลครบถ้วน */
+            .overflow-x-auto, .overflow-y-auto, .max-h-[600px], .max-h-[600px], .max-h-48, .max-h-40 {
+                overflow: visible !important;
+                max-height: none !important;
+            }
+
+            /* ปรับแต่งตารางให้ปริ้นได้สวยงาม */
+            table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th, td { border: 1px solid #ccc !important; padding: 6px !important; font-size: 10px !important; }
+            thead { display: table-header-group; }
+            
+            /* ซ่อนคอลัมน์ "จัดการ" ในตาราง */
+            th:last-child, td:last-child { display: none !important; }
+            
+            /* ปุ่มในกล่องสรุปให้ซ่อน */
+            button { display: none !important; }
+            
+            /* ให้สี Background ของกล่องแสดงเวลาพิมพ์ */
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -82,8 +122,8 @@
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 py-6">
         
-        <!-- Form Section -->
-        <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <!-- Form Section (ซ่อนเวลา Print) -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-6 no-print">
             <h2 class="text-lg font-bold text-gray-800 border-b pb-2 mb-4">📥 ลงบันทึกงานรอ Sort ใหม่</h2>
             <form id="sortForm" onsubmit="submitSortJob(event)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 
@@ -174,8 +214,8 @@
             </form>
         </div>
 
-        <!-- 🌟 แถบเครื่องมือกรองวันที่ (Date Range Filter) 🌟 -->
-        <div class="flex flex-col md:flex-row gap-3 mb-6 bg-white p-4 rounded-xl shadow-md border-t-4 border-indigo-500 items-start md:items-end justify-between">
+        <!-- 🌟 แถบเครื่องมือกรองวันที่ (Date Range Filter) - ซ่อนเวลา Print 🌟 -->
+        <div class="flex flex-col md:flex-row gap-3 mb-6 bg-white p-4 rounded-xl shadow-md border-t-4 border-indigo-500 items-start md:items-end justify-between no-print">
             <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                 <div class="w-full md:w-auto">
                     <label class="block text-xs font-bold text-gray-600 mb-1">กรองวันที่ตาม</label>
@@ -207,12 +247,12 @@
         </div>
 
         <!-- 🌟 TODAY'S SUMMARY SECTION 🌟 -->
-        <div id="today-summary-container" class="bg-white rounded-xl shadow-md p-6 mb-6 border-t-4 border-blue-500 transition-all relative">
+        <div id="today-summary-container" class="bg-white rounded-xl shadow-md p-6 mb-6 border-t-4 border-blue-500 transition-all relative print-break-inside">
             <div class="flex justify-between items-center border-b pb-2 mb-4">
                 <h2 id="summary-title" class="text-lg font-bold text-gray-800 flex items-center gap-2">
                     🎯 สรุปยอดผลงาน Sort วันนี้
                 </h2>
-                <button type="button" onclick="toggleMaximizeContainer('today-summary-container')" class="text-gray-400 hover:text-blue-600 text-xl transition-colors" title="ขยายเต็มจอ/ย่อขนาด">🗖</button>
+                <button type="button" onclick="toggleMaximizeContainer('today-summary-container')" class="text-gray-400 hover:text-blue-600 text-xl transition-colors no-print" title="ขยายเต็มจอ/ย่อขนาด">🗖</button>
             </div>
             <div id="today-summary-content" class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="col-span-full text-center py-4 text-gray-500">กำลังโหลดข้อมูล...</div>
@@ -220,10 +260,10 @@
         </div>
 
         <!-- Table Section with TABS -->
-        <div class="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+        <div class="bg-white rounded-xl shadow-md overflow-hidden mb-8 print-break-inside">
             
-            <!-- Tabs Header -->
-            <div class="flex border-b bg-gray-50 px-2 pt-2 gap-1 overflow-x-auto" id="tabs-container">
+            <!-- Tabs Header (ซ่อนเวลา Print) -->
+            <div class="flex border-b bg-gray-50 px-2 pt-2 gap-1 overflow-x-auto no-print" id="tabs-container">
                 <button onclick="switchTab('prod')" id="tab-prod" class="tab-btn active px-6 py-3 text-gray-600 font-medium rounded-t-lg whitespace-nowrap">
                     📦 งานรอ Sort (Production)
                 </button>
@@ -240,9 +280,17 @@
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 mb-2 gap-3">
                     <h2 class="text-lg font-bold text-gray-800" id="table-title">📋 รายการงานรอ Sort</h2>
                     
-                    <div class="flex w-full md:w-auto gap-2">
+                    <div class="flex flex-wrap w-full md:w-auto gap-2 no-print">
                         <!-- ช่องค้นหาข้อมูลอัจฉริยะ -->
                         <input type="text" id="searchInput" oninput="renderTable()" placeholder="🔍 ค้นหา (ชื่อ, รุ่น, อาการ, จำนวน)..." class="w-full md:w-64 p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        
+                        <!-- 🌟 ปุ่ม Export Excel และ Print -->
+                        <button onclick="exportToExcel()" class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg transition-colors whitespace-nowrap font-bold shadow-sm">
+                            📊 Excel
+                        </button>
+                        <button onclick="printReport()" class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition-colors whitespace-nowrap font-bold shadow-sm">
+                            🖨️ พิมพ์
+                        </button>
                         
                         <button onclick="loadSortJobs()" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors whitespace-nowrap font-bold border">
                             🔄 รีเฟรช
@@ -258,7 +306,7 @@
                                 <th class="p-3 border-b bg-gray-100">รหัสงาน</th>
                                 <th class="p-3 border-b bg-gray-100 sortable-header transition-colors group" onclick="toggleSort('date')">
                                     <div class="flex items-center justify-between">
-                                        วันที่ <span id="sort-icon-date" class="text-blue-500 ml-1">▼</span>
+                                        วันที่ <span id="sort-icon-date" class="text-blue-500 ml-1 no-print">▼</span>
                                     </div>
                                 </th>
                                 <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
@@ -514,6 +562,7 @@
         let allPendingJobs = []; 
         let todaySortedData = []; 
         let activeTab = 'prod'; 
+        let currentSort = { field: 'date', order: 'desc' };
         
         let timePickerInstance = null;
         let timePickerEditInstance = null;
@@ -1049,7 +1098,7 @@
 
                     // สร้างกรอบใหญ่ของแต่ละรุ่น (Model Box)
                     modelListHtml += `
-                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-sm hover:border-blue-300 transition-colors">
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-sm hover:border-blue-300 transition-colors page-break-inside-avoid">
                             <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 pb-2 mb-2 gap-2">
                                 <div class="font-bold text-gray-800 text-sm truncate" title="${m}">🏷️ ${m}</div>
                                 <div class="flex flex-wrap gap-2 text-[11px] bg-white px-2 py-1.5 rounded-lg border border-gray-200 shadow-sm items-center">
@@ -1177,7 +1226,7 @@
                             <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
                         </div>`;
                     actionButtons = `
-                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
                             <div class="bg-green-100 text-green-700 py-2 rounded-lg text-[11px] font-bold border border-green-200 text-center w-full shadow-sm">
                                 ✔ จบงานแล้ว
                             </div>
@@ -1188,7 +1237,7 @@
                 if (activeTab === 'prod') {
                     if (currentUser.role === 'Production' || currentUser.role === 'Admin') {
                         actionButtons = `
-                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
                                 <button onclick="openEditModal('${job.jobId}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded text-xs font-bold transition-colors border border-gray-300 shadow-sm w-full">
                                     ✏️ แก้ไขข้อมูล
                                 </button>
@@ -1199,7 +1248,7 @@
                         `;
                     } else {
                         actionButtons = `
-                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                            <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
                                 <div class="bg-gray-100 text-gray-500 py-2 rounded-lg text-[11px] font-bold border border-gray-200 text-center w-full shadow-sm">
                                     ⏳ รอฝั่งผลิตคัดแยก
                                 </div>
@@ -1208,7 +1257,7 @@
                     }
                 } else if (activeTab === 'qc') {
                     actionButtons = `
-                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto">
+                        <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
                             <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
                                 ✔ อนุมัติ (Pass)
                             </button>
@@ -1253,7 +1302,7 @@
                         <td class="p-3 text-xs align-top whitespace-nowrap">
                             ${recorderHtml}
                         </td>
-                        <td class="p-3 text-center align-top">
+                        <td class="p-3 text-center align-top no-print">
                             ${actionButtons}
                         </td>
                     </tr>
@@ -1365,6 +1414,88 @@
         window.filterJobs = function() {
             renderTable();
         };
+
+        // ==========================================
+        // 📊 ฟังก์ชันสำหรับ Export Excel และ พิมพ์รายงาน (Auto Report)
+        // ==========================================
+        function exportToExcel() {
+            if (allPendingJobs.length === 0) {
+                alert("ไม่มีข้อมูลสำหรับ Export กรุณารอโหลดข้อมูล หรือ รีเฟรช");
+                return;
+            }
+
+            const searchInput = document.getElementById('searchInput') ? document.getElementById('searchInput').value.trim().toLowerCase() : '';
+            const searchTerms = searchInput ? searchInput.split(/\s+/) : [];
+
+            // คัดกรองข้อมูลเฉพาะที่เห็นบนตาราง
+            let jobsToExport = allPendingJobs.filter(job => {
+                let showJob = false;
+                if (activeTab === 'prod') {
+                    showJob = (job.status === 'Pending' || job.status === 'Rejected');
+                } else if (activeTab === 'qc') {
+                    showJob = (job.status === 'Wait QC');
+                } else if (activeTab === 'history') {
+                    showJob = (job.status === 'Completed');
+                }
+                if (!showJob) return false;
+
+                if (searchTerms.length > 0) {
+                    let model = job.product;
+                    if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
+                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.sorter || ''} ${job.closedBy || ''} ${job.qty}`.toLowerCase();
+                    return searchTerms.every(t => searchString.includes(t));
+                }
+                return true;
+            });
+
+            if (jobsToExport.length === 0) {
+                 alert("ไม่มีข้อมูลที่ตรงกับเงื่อนไขสำหรับการ Export ในแท็บนี้");
+                 return;
+            }
+
+            // จัดรูปแบบ Data ให้เข้ากับ Excel
+            const excelData = jobsToExport.map(job => {
+                let model = job.product;
+                if (job.product.includes(" : ")) model = job.product.split(" : ")[1].trim();
+                const qtyInfo = parseQuantity(job.qty, model);
+                
+                return {
+                    "รหัสงาน (Job ID)": job.jobId,
+                    "วันที่แจ้ง": job.date,
+                    "รุ่นสินค้า (Product)": job.product,
+                    "อาการเสีย (Symptom)": job.symptom,
+                    "จำนวน (ชิ้น)": qtyInfo.pcs,
+                    "จำนวน (Kg)": parseFloat(qtyInfo.kg.toFixed(3)),
+                    "ยอดจัดคัด FG": job.fgQty || "-",
+                    "ยอดจัดคัด NG": job.ngQty || "-",
+                    "หมายเหตุ": job.remark ? job.remark.replace(/\[พบที่:(.*?)\]\s*/g, '') : "-",
+                    "ขั้นตอนที่พบ": job.remark && job.remark.includes("[พบที่:") ? job.remark.match(/\[พบที่:\s*(.+?)\]/)[1] : "-",
+                    "ผู้แจ้ง (Production)": job.recorder || "-",
+                    "ผู้คัด (Sorter)": job.sorter || "-",
+                    "ผู้ปิดงาน (QC)": job.closedBy || "-",
+                    "วันที่ปิดงาน (QC)": job.closedDate || "-",
+                    "สถานะปัจจุบัน": job.status
+                };
+            });
+
+            // สร้าง Workbook และ Worksheet ผ่าน SheetJS
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            
+            // ตั้งชื่อ Tab ใน Excel
+            const tabNameMap = { 'prod': 'งานรอ_Sort', 'qc': 'รอตรวจสอบ_QC', 'history': 'ประวัติงานเสร็จสิ้น' };
+            XLSX.utils.book_append_sheet(wb, ws, tabNameMap[activeTab] || "Data");
+            
+            // สร้างไฟล์
+            const dateStr = filterStartDate ? `${filterStartDate}_to_${filterEndDate}` : 'All_Dates';
+            const fileName = `Report_CWM_Sorting_${dateStr}.xlsx`;
+            
+            XLSX.writeFile(wb, fileName);
+        }
+
+        function printReport() {
+            window.print();
+        }
 
         // ==========================================
         // Modal ปิดงาน / ส่งยอด (Production)
