@@ -11,6 +11,9 @@
     
     <!-- เพิ่มไลบรารี SheetJS สำหรับ Export Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Chart.js สำหรับกราฟเทรนด์ -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     
     <style>
         body { font-family: 'Sarabun', sans-serif; }
@@ -1122,38 +1125,84 @@
                 html += modelListHtml;
             }
 
-            // แสดงยอดแบ่งตามอาการ (Symptom Breakdown)
-            const symptoms = Object.keys(summaryBySymptom).sort();
-            if (symptoms.length > 0) {
-                let symptomHtml = `
-                    <div class="col-span-full mt-2">
-                        <h4 class="font-bold text-purple-800 text-sm mb-2">🔍 แบ่งตามอาการ</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto custom-scrollbar">`;
-                symptoms.forEach(s => {
-                    let d = summaryBySymptom[s];
-                    let totalKg = d.fgKg + d.ngKg;
-                    let totalPcs = d.fgPcs + d.ngPcs;
-                    symptomHtml += `
-                        <div class="bg-purple-50 p-3 rounded-lg border border-purple-200 shadow-sm hover:bg-white transition-colors">
-                            <div class="font-bold text-purple-800 text-sm border-b border-purple-200 pb-1 mb-1 truncate" title="${s}">⚠️ ${s} <span class="text-xs font-normal text-gray-500">(${d.count} รายการ)</span></div>
-                            <div class="text-xs text-blue-600 font-semibold mb-2">รวม: ${totalKg.toFixed(2)} kg (${totalPcs.toLocaleString()} ชิ้น)</div>
-                            <div class="flex justify-between text-sm">
-                                <div>
-                                    <span class="text-green-600 font-bold">FG: ${d.fgKg.toFixed(2)} kg</span><br>
-                                    <span class="text-xs text-gray-500">(${d.fgPcs.toLocaleString()} ชิ้น)</span>
-                                </div>
-                                <div class="text-right border-l pl-2">
-                                    <span class="text-red-600 font-bold">NG: ${d.ngKg.toFixed(2)} kg</span><br>
-                                    <span class="text-xs text-gray-500">(${d.ngPcs.toLocaleString()} ชิ้น)</span>
-                                </div>
-                            </div>
-                        </div>`;
-                });
-                symptomHtml += '</div></div>';
-                html += symptomHtml;
+            // กราฟเทรนด์ FG/NG รายวัน (Stacked Bar Chart)
+            let dailyData = {};
+            todaySortedData.forEach(job => {
+                let dateKey = job.sortDate || 'unknown';
+                if (dateKey === 'unknown') return;
+                let model = job.product.includes(" : ") ? job.product.split(" : ")[1].trim() : job.product;
+                let fgInfo = parseQuantity(job.fgQty, model);
+                let ngInfo = parseQuantity(job.ngQty, model);
+                if (!dailyData[dateKey]) dailyData[dateKey] = { fg: 0, ng: 0 };
+                dailyData[dateKey].fg += fgInfo.pcs;
+                dailyData[dateKey].ng += ngInfo.pcs;
+            });
+
+            let sortedDates = Object.keys(dailyData).sort();
+            if (sortedDates.length > 1) {
+                html += `
+                    <div class="col-span-full mt-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-gray-800 text-sm mb-2">📊 เทรนด์การคัดรายวัน (FG vs NG)</h4>
+                        <canvas id="dailyTrendChart" height="200"></canvas>
+                    </div>`;
             }
 
             container.innerHTML = html;
+
+            // วาดกราฟหลัง DOM พร้อม
+            if (sortedDates.length > 1 && document.getElementById('dailyTrendChart')) {
+                const ctx = document.getElementById('dailyTrendChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: sortedDates.map(d => {
+                            let parts = d.split('-');
+                            return parts[2] + '/' + parts[1];
+                        }),
+                        datasets: [
+                            {
+                                label: 'FG (ดี)',
+                                data: sortedDates.map(d => dailyData[d].fg),
+                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                                borderColor: 'rgba(34, 197, 94, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'NG (เสีย)',
+                                data: sortedDates.map(d => dailyData[d].ng),
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { stacked: true },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toLocaleString() + ' ชิ้น';
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ชิ้น';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
 
