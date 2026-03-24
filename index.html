@@ -1180,14 +1180,34 @@
                                     data: sortedDates.map(d => dailyData[d].fg),
                                     backgroundColor: 'rgba(34, 197, 94, 0.7)',
                                     borderColor: 'rgba(34, 197, 94, 1)',
-                                    borderWidth: 1
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                    order: 2
                                 },
                                 {
                                     label: 'NG (เสีย)',
                                     data: sortedDates.map(d => dailyData[d].ng),
                                     backgroundColor: 'rgba(239, 68, 68, 0.7)',
                                     borderColor: 'rgba(239, 68, 68, 1)',
-                                    borderWidth: 1
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                    order: 2
+                                },
+                                {
+                                    label: '%NG Rate',
+                                    type: 'line',
+                                    data: sortedDates.map(d => {
+                                        let total = dailyData[d].fg + dailyData[d].ng;
+                                        return total > 0 ? parseFloat(((dailyData[d].ng / total) * 100).toFixed(2)) : 0;
+                                    }),
+                                    borderColor: 'rgba(251, 146, 60, 1)',
+                                    backgroundColor: 'rgba(251, 146, 60, 0.2)',
+                                    borderWidth: 2,
+                                    pointRadius: 4,
+                                    pointBackgroundColor: 'rgba(251, 146, 60, 1)',
+                                    fill: false,
+                                    yAxisID: 'yNgRate',
+                                    order: 1
                                 }
                             ]
                         },
@@ -1199,10 +1219,25 @@
                                 y: {
                                     stacked: true,
                                     beginAtZero: true,
+                                    position: 'left',
                                     ticks: {
                                         callback: function(value) {
                                             return value.toLocaleString() + ' ชิ้น';
                                         }
+                                    }
+                                },
+                                yNgRate: {
+                                    beginAtZero: true,
+                                    position: 'right',
+                                    grid: { drawOnChartArea: false },
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value + '%';
+                                        }
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: '%NG Rate'
                                     }
                                 }
                             },
@@ -1210,6 +1245,9 @@
                                 tooltip: {
                                     callbacks: {
                                         label: function(context) {
+                                            if (context.dataset.yAxisID === 'yNgRate') {
+                                                return context.dataset.label + ': ' + context.parsed.y + '%';
+                                            }
                                             return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ชิ้น';
                                         }
                                     }
