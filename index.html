@@ -780,8 +780,9 @@
         }
 
         function parseQuantity(qtyStr, productStr) {
-            if (!qtyStr) return { pcs: 0, kg: 0, display: "-" };
-            const val = parseFloat(qtyStr); 
+            if (!qtyStr && qtyStr !== 0) return { pcs: 0, kg: 0, display: "-" };
+            qtyStr = String(qtyStr);
+            const val = parseFloat(qtyStr);
             if (isNaN(val)) return { pcs: 0, kg: 0, display: qtyStr };
             
             const wpp = getWeightPerPc(productStr);
@@ -1013,7 +1014,8 @@
 
             // วนลูปข้อมูลทั้งหมดเพื่อจัดกลุ่มตามรุ่น (Model) และอาการ (Symptom)
             todaySortedData.forEach(job => {
-                let model = job.product.includes(" : ") ? job.product.split(" : ")[1].trim() : job.product;
+                let product = job.product ? String(job.product) : "";
+                let model = product.includes(" : ") ? product.split(" : ")[1].trim() : product;
                 let symptom = job.symptom || "ไม่ระบุ";
 
                 let fgInfo = parseQuantity(job.fgQty, model);
