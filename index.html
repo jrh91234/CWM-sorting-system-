@@ -982,7 +982,12 @@
                     }
                 }
             } catch (err) {
+                console.error("loadSortJobs error:", err);
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
+                const summaryContainer = document.getElementById('today-summary-content');
+                if (summaryContainer) {
+                    summaryContainer.innerHTML = '<div class="col-span-full text-center py-4 text-red-500 font-bold">❌ โหลดข้อมูลสรุปไม่สำเร็จ</div>';
+                }
             }
         }
 
@@ -1150,58 +1155,62 @@
             container.innerHTML = html;
 
             // วาดกราฟหลัง DOM พร้อม
-            if (sortedDates.length > 1 && document.getElementById('dailyTrendChart')) {
-                const ctx = document.getElementById('dailyTrendChart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: sortedDates.map(d => {
-                            let parts = d.split('-');
-                            return parts[2] + '/' + parts[1];
-                        }),
-                        datasets: [
-                            {
-                                label: 'FG (ดี)',
-                                data: sortedDates.map(d => dailyData[d].fg),
-                                backgroundColor: 'rgba(34, 197, 94, 0.7)',
-                                borderColor: 'rgba(34, 197, 94, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'NG (เสีย)',
-                                data: sortedDates.map(d => dailyData[d].ng),
-                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
-                                borderColor: 'rgba(239, 68, 68, 1)',
-                                borderWidth: 1
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            x: { stacked: true },
-                            y: {
-                                stacked: true,
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
-                                        return value.toLocaleString() + ' ชิ้น';
+            try {
+                if (sortedDates.length > 1 && typeof Chart !== 'undefined' && document.getElementById('dailyTrendChart')) {
+                    const ctx = document.getElementById('dailyTrendChart').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: sortedDates.map(d => {
+                                let parts = d.split('-');
+                                return parts[2] + '/' + parts[1];
+                            }),
+                            datasets: [
+                                {
+                                    label: 'FG (ดี)',
+                                    data: sortedDates.map(d => dailyData[d].fg),
+                                    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                                    borderColor: 'rgba(34, 197, 94, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'NG (เสีย)',
+                                    data: sortedDates.map(d => dailyData[d].ng),
+                                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                    borderColor: 'rgba(239, 68, 68, 1)',
+                                    borderWidth: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: { stacked: true },
+                                y: {
+                                    stacked: true,
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value.toLocaleString() + ' ชิ้น';
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ชิ้น';
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ชิ้น';
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
+            } catch (chartErr) {
+                console.warn("Chart rendering skipped:", chartErr);
             }
         }
 
