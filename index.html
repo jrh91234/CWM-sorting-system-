@@ -1178,8 +1178,8 @@
                                 {
                                     label: 'FG (ดี)',
                                     data: sortedDates.map(d => dailyData[d].fg),
-                                    backgroundColor: 'rgba(82, 168, 145, 0.55)',
-                                    borderColor: 'rgba(82, 168, 145, 0.85)',
+                                    backgroundColor: 'rgba(134, 210, 190, 0.85)',
+                                    borderColor: 'rgba(104, 190, 168, 1)',
                                     borderWidth: 1,
                                     yAxisID: 'y',
                                     order: 2
@@ -1187,8 +1187,8 @@
                                 {
                                     label: 'NG (เสีย)',
                                     data: sortedDates.map(d => dailyData[d].ng),
-                                    backgroundColor: 'rgba(176, 98, 112, 0.55)',
-                                    borderColor: 'rgba(176, 98, 112, 0.85)',
+                                    backgroundColor: 'rgba(232, 160, 172, 0.85)',
+                                    borderColor: 'rgba(210, 130, 148, 1)',
                                     borderWidth: 1,
                                     yAxisID: 'y',
                                     order: 2
@@ -1200,11 +1200,11 @@
                                         let total = dailyData[d].fg + dailyData[d].ng;
                                         return total > 0 ? parseFloat(((dailyData[d].ng / total) * 100).toFixed(2)) : 0;
                                     }),
-                                    borderColor: 'rgba(192, 148, 96, 0.9)',
-                                    backgroundColor: 'rgba(192, 148, 96, 0.15)',
+                                    borderColor: 'rgba(220, 185, 140, 1)',
+                                    backgroundColor: 'rgba(235, 205, 165, 0.3)',
                                     borderWidth: 2,
                                     pointRadius: 4,
-                                    pointBackgroundColor: 'rgba(192, 148, 96, 0.9)',
+                                    pointBackgroundColor: 'rgba(220, 185, 140, 1)',
                                     fill: false,
                                     yAxisID: 'yNgRate',
                                     order: 1
