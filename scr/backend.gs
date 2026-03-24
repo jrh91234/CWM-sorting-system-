@@ -227,7 +227,8 @@ function doGet(e) {
                 symptom: r[sympCol] || "",
                 fgQty: fgCol > -1 ? r[fgCol] : "",
                 ngQty: ngCol > -1 ? r[ngCol] : "",
-                status: currentStatus
+                status: currentStatus,
+                sortDate: summaryTargetISO
             });
         }
       }

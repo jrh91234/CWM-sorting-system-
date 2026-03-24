@@ -1350,11 +1350,12 @@
 
             // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ (เฉพาะงานค้าง) 🌟
             let predictionHtml = '';
-            let daysFiltered = 1;
-            if (filterStartDate && filterEndDate) {
-                const diffTime = Math.abs(new Date(filterEndDate) - new Date(filterStartDate));
-                daysFiltered = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-            }
+            // นับจำนวนวันที่มียอดคัดจริง (distinct dates)
+            let activeDaysSet = new Set();
+            todaySortedData.forEach(job => {
+                if (job.sortDate) activeDaysSet.add(job.sortDate);
+            });
+            let daysFiltered = activeDaysSet.size || 1;
             let avgCapacityPerDay = dailyCapacityPcs / daysFiltered;
 
             if (avgCapacityPerDay > 0) {
