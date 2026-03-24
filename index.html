@@ -578,7 +578,7 @@
         let dailyCapacityPcs = 0;
         let dailyCapacityKg = 0;
 
-        const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG"];
+        const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG", "RTV"];
         let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
 
         window.onload = () => {
