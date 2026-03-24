@@ -95,6 +95,7 @@ function doGet(e) {
       let closedByCol = getCol("Closed_By"); 
       let closedDateCol = getCol("Closed_Date");
       let sorterCol = getCol("Sorter");
+      let rejectTargetCol = getCol("Reject_Target");
 
       if (jobCol === -1 || statCol === -1) return ContentService.createTextOutput(JSON.stringify({status: "success", data: [], summaryData: []})).setMimeType(ContentService.MimeType.JSON);
 
@@ -204,7 +205,8 @@ function doGet(e) {
             ngQty: ngCol > -1 ? r[ngCol] : "",
             closedBy: closedByCol > -1 ? r[closedByCol] : "",
             closedDate: cDate,
-            sorter: sorterCol > -1 ? r[sorterCol] : ""
+            sorter: sorterCol > -1 ? r[sorterCol] : "",
+            rejectTarget: rejectTargetCol > -1 ? r[rejectTargetCol] : ""
           });
         }
 
@@ -697,6 +699,9 @@ function doPost(e) {
           let sorterColIdx = getCol("Sorter");
           if (sorterColIdx === -1) { sorterColIdx = headers.length; sheet.getRange(1, sorterColIdx + 1).setValue("Sorter"); headers.push("Sorter"); }
 
+          let rejectTargetColIdx = getCol("Reject_Target");
+          if (rejectTargetColIdx === -1) { rejectTargetColIdx = headers.length; sheet.getRange(1, rejectTargetColIdx + 1).setValue("Reject_Target"); headers.push("Reject_Target"); }
+
           let jobCol = getCol("Job_ID");
           let statCol = getCol("Status") + 1;
           let remCol = getCol("Remark") + 1;
@@ -707,6 +712,7 @@ function doPost(e) {
           let closedByCol = closedByColIdx + 1;
           let closedDateCol = closedDateColIdx + 1;
           let sorterCol = sorterColIdx + 1;
+          let rejectTargetCol = rejectTargetColIdx + 1;
 
           let foundRow = -1;
           for (let i = 1; i < rows.length; i++) { 
@@ -730,6 +736,8 @@ function doPost(e) {
                   if (data.ngQty) sheet.getRange(foundRow, ngCol).setValue(data.ngQty);
                   sheet.getRange(foundRow, sorterCol).setValue(data.closedBy); // บันทึกชื่อคนคัดลงคอลัมน์ Sorter
                   sheet.getRange(foundRow, closedDateCol).setValue(now.toLocaleString('th-TH'));
+                  // เคลียร์ Reject_Target หลังส่งยอดใหม่แล้ว
+                  sheet.getRange(foundRow, rejectTargetCol).setValue("");
                   logUserAction(data.closedBy, "System", "SUBMIT_QC", `ส่งงาน ${data.jobId} ให้ QC ตรวจ`);
               } 
               else if (data.status === "Completed") {
@@ -909,6 +917,8 @@ function doPost(e) {
                   let oldRemark = sheet.getRange(foundRow, remCol).getValue();
                   let rejectNote = `[QC ${data.closedBy} ตีกลับ ${data.rejectTarget}: ${data.rejectReason}]`;
                   sheet.getRange(foundRow, remCol).setValue(`${rejectNote} | ${oldRemark}`);
+                  // บันทึก Reject_Target เพื่อให้ Frontend คำนวณรวมยอดได้ถูกต้องเมื่อส่งกลับมาใหม่
+                  sheet.getRange(foundRow, rejectTargetCol).setValue(data.rejectTarget || "");
                   logUserAction(data.closedBy, "System", "QC_REJECT", `QC ตีกลับงาน: ${data.jobId} (${data.rejectTarget})`);
               }
 
