@@ -566,6 +566,7 @@
         let todaySortedData = []; 
         let activeTab = 'prod'; 
         let currentSort = { field: 'date', order: 'desc' };
+        let dailyTrendChartInstance = null;
         
         let timePickerInstance = null;
         let timePickerEditInstance = null;
@@ -1150,7 +1151,9 @@
                 html += `
                     <div class="col-span-full mt-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                         <h4 class="font-bold text-gray-800 text-sm mb-2">📊 เทรนด์การคัดรายวัน (FG vs NG)</h4>
-                        <canvas id="dailyTrendChart" height="200"></canvas>
+                        <div style="position:relative;height:250px;max-height:300px;">
+                            <canvas id="dailyTrendChart"></canvas>
+                        </div>
                     </div>`;
             }
 
@@ -1159,8 +1162,12 @@
             // วาดกราฟหลัง DOM พร้อม
             try {
                 if (sortedDates.length > 1 && typeof Chart !== 'undefined' && document.getElementById('dailyTrendChart')) {
+                    if (dailyTrendChartInstance) {
+                        dailyTrendChartInstance.destroy();
+                        dailyTrendChartInstance = null;
+                    }
                     const ctx = document.getElementById('dailyTrendChart').getContext('2d');
-                    new Chart(ctx, {
+                    dailyTrendChartInstance = new Chart(ctx, {
                         type: 'bar',
                         data: {
                             labels: sortedDates.map(d => {
