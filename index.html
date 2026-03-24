@@ -1059,7 +1059,7 @@
 
             const models = Object.keys(summaryByModel).sort();
             if (models.length > 0) {
-                let modelListHtml = '<div class="col-span-full md:col-span-2 grid grid-cols-1 gap-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">';
+                let modelListHtml = '<div class="col-span-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-40 overflow-y-auto custom-scrollbar">';
                 models.forEach(m => {
                     let d = summaryByModel[m];
                     let modelTotalPcs = d.fgPcs + d.ngPcs;
@@ -1120,6 +1120,37 @@
                 });
                 modelListHtml += '</div>';
                 html += modelListHtml;
+            }
+
+            // แสดงยอดแบ่งตามอาการ (Symptom Breakdown)
+            const symptoms = Object.keys(summaryBySymptom).sort();
+            if (symptoms.length > 0) {
+                let symptomHtml = `
+                    <div class="col-span-full mt-2">
+                        <h4 class="font-bold text-purple-800 text-sm mb-2">🔍 แบ่งตามอาการ</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto custom-scrollbar">`;
+                symptoms.forEach(s => {
+                    let d = summaryBySymptom[s];
+                    let totalKg = d.fgKg + d.ngKg;
+                    let totalPcs = d.fgPcs + d.ngPcs;
+                    symptomHtml += `
+                        <div class="bg-purple-50 p-3 rounded-lg border border-purple-200 shadow-sm hover:bg-white transition-colors">
+                            <div class="font-bold text-purple-800 text-sm border-b border-purple-200 pb-1 mb-1 truncate" title="${s}">⚠️ ${s} <span class="text-xs font-normal text-gray-500">(${d.count} รายการ)</span></div>
+                            <div class="text-xs text-blue-600 font-semibold mb-2">รวม: ${totalKg.toFixed(2)} kg (${totalPcs.toLocaleString()} ชิ้น)</div>
+                            <div class="flex justify-between text-sm">
+                                <div>
+                                    <span class="text-green-600 font-bold">FG: ${d.fgKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.fgPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                                <div class="text-right border-l pl-2">
+                                    <span class="text-red-600 font-bold">NG: ${d.ngKg.toFixed(2)} kg</span><br>
+                                    <span class="text-xs text-gray-500">(${d.ngPcs.toLocaleString()} ชิ้น)</span>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                symptomHtml += '</div></div>';
+                html += symptomHtml;
             }
 
             container.innerHTML = html;
@@ -1319,11 +1350,12 @@
 
             // 🌟 1. สร้าง HTML สรุปและพยากรณ์วันที่คาดว่าจะเสร็จ (เฉพาะงานค้าง) 🌟
             let predictionHtml = '';
-            let daysFiltered = 1;
-            if (filterStartDate && filterEndDate) {
-                const diffTime = Math.abs(new Date(filterEndDate) - new Date(filterStartDate));
-                daysFiltered = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-            }
+            // นับจำนวนวันที่มียอดคัดจริง (distinct dates)
+            let activeDaysSet = new Set();
+            todaySortedData.forEach(job => {
+                if (job.sortDate) activeDaysSet.add(job.sortDate);
+            });
+            let daysFiltered = activeDaysSet.size || 1;
             let avgCapacityPerDay = dailyCapacityPcs / daysFiltered;
 
             if (avgCapacityPerDay > 0) {
