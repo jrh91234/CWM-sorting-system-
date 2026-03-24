@@ -1078,7 +1078,17 @@
                 </div>
             `;
 
-            const models = Object.keys(summaryByModel).sort();
+            const ampereOrder = ['10A', '16A', '20A', '25/32A', '25A', '32A'];
+            const models = Object.keys(summaryByModel).sort((a, b) => {
+                const getAmpIdx = (name) => {
+                    for (let i = 0; i < ampereOrder.length; i++) {
+                        if (name.includes(ampereOrder[i])) return i;
+                    }
+                    return ampereOrder.length;
+                };
+                const diff = getAmpIdx(a) - getAmpIdx(b);
+                return diff !== 0 ? diff : a.localeCompare(b);
+            });
             if (models.length > 0) {
                 let modelListHtml = '<div class="col-span-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 overflow-x-hidden custom-scrollbar">';
                 models.forEach(m => {
