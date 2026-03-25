@@ -895,8 +895,8 @@ function doPost(e) {
                                   mapData("Recorder", recorder);
                                   mapData("Product", sortProduct);
                                   mapData("Hour", hourSlot);
-                                  // ถ้า Remark มี "FG" (งานตีกลับ FG) = FG ถูกนับไปแล้วจาก Production เดิม ไม่ต้องเขียนซ้ำ
-                                  if (!remarkStr.includes("ตีกลับ FG")) {
+                                  // ถ้า Remark มี "พบที่: FG" = NG มาจาก FG ที่บันทึกไปแล้ว ไม่ต้องเขียน FG ซ้ำ
+                                  if (!remarkStr.includes("พบที่: FG")) {
                                       mapData("FG", fgPcs);
                                   }
                                   mapData("NG_Total", parseFloat(ngKg.toFixed(4)));
