@@ -212,22 +212,14 @@ function doGet(e) {
 
         // 4. กรองกล่องสรุปผลงาน (Summary Jobs) -> วัดจากงานที่คัดเสร็จแล้วเท่านั้น
         let isSummaryDateMatch = false;
-        let summaryTargetISO;
+        let summaryTargetISO = cDateISO || dDateISO;
 
         if (startDateStr && endDateStr) {
-            // มีการเลือก date range -> ใช้ filterBy เหมือนตารางหลัก
-            if (filterBy === "closed" && cDateISO) {
-                summaryTargetISO = cDateISO;
-            } else {
-                summaryTargetISO = dDateISO;
-            }
-            if (summaryTargetISO >= startDateStr && summaryTargetISO <= endDateStr) {
-                isSummaryDateMatch = true;
-            }
+             if (summaryTargetISO >= startDateStr && summaryTargetISO <= endDateStr) {
+                 isSummaryDateMatch = true;
+             }
         } else {
-            // ไม่มี date range (โหมดปกติ "วันนี้") -> ใช้วันที่ปิดงานเป็นหลัก เพราะวัดจากงานที่คัดเสร็จ
-            summaryTargetISO = cDateISO || dDateISO;
-            if (summaryTargetISO === todayISO) isSummaryDateMatch = true;
+             if (summaryTargetISO === todayISO) isSummaryDateMatch = true; // ค่าเริ่มต้นคือวันนี้
         }
 
         if ((currentStatus === "Wait QC" || currentStatus === "Completed" || currentStatus === "Rejected") && isSummaryDateMatch) {
