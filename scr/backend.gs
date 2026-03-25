@@ -762,7 +762,6 @@ function doPost(e) {
                   // === เพิ่ม NG หลัง Sort เข้า Production_Data เป็น row ใหม่ (ทำหลัง flush เพื่อไม่บล็อก QC) ===
                   try {
                       const sortRow = rows[foundRow - 1];
-                      const remarkStr = String(sortRow[getCol("Remark")] || "");
                       const productStr = String(sortRow[getCol("Product")] || "");
                       const symptom = String(sortRow[getCol("Symptom")] || "");
                       const ngQtyRaw = String(sortRow[getCol("NG_Qty")] || "");
@@ -895,10 +894,7 @@ function doPost(e) {
                                   mapData("Recorder", recorder);
                                   mapData("Product", sortProduct);
                                   mapData("Hour", hourSlot);
-                                  // ถ้า Remark มี "พบที่: FG" หรือ "พบที่: RTV" = NG มาจากยอดที่บันทึกไปแล้ว ไม่ต้องเขียน FG ซ้ำ
-                                  if (!remarkStr.includes("พบที่: FG") && !remarkStr.includes("พบที่: RTV")) {
-                                      mapData("FG", fgPcs);
-                                  }
+                                  mapData("FG", fgPcs);
                                   mapData("NG_Total", parseFloat(ngKg.toFixed(4)));
                                   mapData("NG_Details_JSON", JSON.stringify(ngDetails));
                                   mapData("Shift_Type", shiftType);
