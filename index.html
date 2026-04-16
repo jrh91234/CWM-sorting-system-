@@ -1421,38 +1421,46 @@
                 }
 
                 const qtyInfo = parseQuantity(job.qty, model);
-                
+
                 // คำนวณเฉพาะงานที่ยังค้าง (ใน History ไม่นำมาคำนวณคาดการณ์)
                 if (activeTab !== 'history') {
                     totalPcs += qtyInfo.pcs;
                     totalKg += qtyInfo.kg;
-                    
+
                     if (!breakdownModel[model]) breakdownModel[model] = { pcs: 0, kg: 0 };
                     breakdownModel[model].pcs += qtyInfo.pcs;
                     breakdownModel[model].kg += qtyInfo.kg;
-                    
+
                     if (!breakdownMachine[machine]) breakdownMachine[machine] = { pcs: 0, kg: 0 };
                     breakdownMachine[machine].pcs += qtyInfo.pcs;
                     breakdownMachine[machine].kg += qtyInfo.kg;
                 }
 
+                // แปลงยอด FG/NG ให้แสดงทั้ง kg และ ชิ้น
+                const fgInfoQc = parseQuantity(job.fgQty, model);
+                const ngInfoQc = parseQuantity(job.ngQty, model);
+                const fgHasQty = job.fgQty || job.fgQty === 0;
+                const ngHasQty = job.ngQty || job.ngQty === 0;
+                const fgBothUnits = fgHasQty ? `${fgInfoQc.kg.toFixed(3)} kg <span class="text-gray-500 font-normal">(${fgInfoQc.pcs.toLocaleString()} ชิ้น)</span>` : '-';
+                const ngBothUnits = ngHasQty ? `${ngInfoQc.kg.toFixed(3)} kg <span class="text-gray-500 font-normal">(${ngInfoQc.pcs.toLocaleString()} ชิ้น)</span>` : '-';
+
                 let statusBadge = `<span class="status-badge status-Pending">รอ Sort</span>`;
                 let fgNgDisplay = "";
                 let actionButtons = "";
-                
+
                 if (job.status === 'Wait QC') {
                     statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
                     fgNgDisplay = `
                         <div class="mt-2 p-1.5 bg-yellow-50 text-xs rounded border border-yellow-200 text-left">
                             <b class="text-gray-700">แจ้งยอดจัดคัด:</b><br>
-                            <span class="text-green-700 font-bold">FG: ${job.fgQty}</span> | 
-                            <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
+                            <div><span class="text-green-700 font-bold">FG: ${fgBothUnits}</span></div>
+                            <div><span class="text-red-700 font-bold">NG: ${ngBothUnits}</span></div>
                         </div>`;
                 } else if (job.status === 'Rejected') {
                     statusBadge = `<span class="status-badge status-Rejected">ตีกลับ/แก้ไข</span>`;
                     let rejInfo = '';
                     if (job.rejectTarget) rejInfo += `<span class="text-red-700 font-bold">ตีกลับ: ${job.rejectTarget}</span><br>`;
-                    if (job.fgQty || job.ngQty) rejInfo += `<span class="text-green-700">FG: ${job.fgQty || '-'}</span> | <span class="text-red-700">NG: ${job.ngQty || '-'}</span>`;
+                    if (job.fgQty || job.ngQty) rejInfo += `<div><span class="text-green-700 font-bold">FG: ${fgBothUnits}</span></div><div><span class="text-red-700 font-bold">NG: ${ngBothUnits}</span></div>`;
                     if (rejInfo) {
                         fgNgDisplay = `
                         <div class="mt-2 p-1.5 bg-red-50 text-xs rounded border border-red-200 text-left">
@@ -1464,8 +1472,8 @@
                     fgNgDisplay = `
                         <div class="mt-2 p-1.5 bg-green-50 text-xs rounded border border-green-200 text-left">
                             <b class="text-gray-700">ยอดที่อนุมัติ:</b><br>
-                            <span class="text-green-700 font-bold">FG: ${job.fgQty}</span> | 
-                            <span class="text-red-700 font-bold">NG: ${job.ngQty}</span>
+                            <div><span class="text-green-700 font-bold">FG: ${fgBothUnits}</span></div>
+                            <div><span class="text-red-700 font-bold">NG: ${ngBothUnits}</span></div>
                         </div>`;
                     actionButtons = `
                         <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
