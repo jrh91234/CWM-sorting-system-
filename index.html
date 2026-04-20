@@ -550,6 +550,35 @@
         </div>
     </div>
 
+    <!-- Modal สำหรับ QC: อนุมัติแบบแยก FG/NG -->
+    <div id="qcApproveModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+        <div class="bg-white w-full max-w-md rounded-xl shadow-lg p-6">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-green-700">✅ อนุมัติงาน (เลือก FG / NG)</h3>
+                <button type="button" onclick="closeApproveModal()" class="text-gray-400 hover:text-red-600 text-xl font-bold transition-colors" title="ปิด">✖</button>
+            </div>
+            <form id="approveForm" onsubmit="submitApprove(event)">
+                <input type="hidden" id="approve-job-id">
+                <p class="text-sm mb-3 font-bold text-gray-700">เลือกยอดที่ต้องการอนุมัติ:</p>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <label class="flex items-center gap-2 p-2 rounded-lg border border-green-300 bg-green-50 cursor-pointer">
+                        <input type="checkbox" id="app-fg" class="w-5 h-5 text-green-600 rounded" checked>
+                        <span class="font-bold text-green-700">FG</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-2 rounded-lg border border-red-300 bg-red-50 cursor-pointer">
+                        <input type="checkbox" id="app-ng" class="w-5 h-5 text-red-600 rounded" checked>
+                        <span class="font-bold text-red-700">NG</span>
+                    </label>
+                </div>
+                <p class="text-xs text-gray-500 mb-4">* ถ้าเลือกเพียงด้านเดียว ระบบจะอนุมัติส่วนนั้น และส่งอีกส่วนกลับไปให้ Production คัดใหม่อัตโนมัติ</p>
+                <div class="flex justify-end gap-2 pt-2 border-t">
+                    <button type="button" onclick="closeApproveModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition">ยกเลิก</button>
+                    <button type="submit" id="btn-submit-approve" class="px-5 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition shadow">✅ ยืนยันอนุมัติ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
     <!-- Modal สำหรับ Recall งานที่อนุมัติแล้ว -->
     <div id="recallModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
@@ -1512,8 +1541,8 @@
                 } else if (activeTab === 'qc') {
                     actionButtons = `
                         <div class="flex flex-col gap-1.5 w-full max-w-[140px] mx-auto no-print">
-                            <button onclick="approveQC('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
-                                ✔ อนุมัติ (Pass)
+                            <button onclick="openApproveModal('${job.jobId}')" class="bg-green-500 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition-colors shadow-sm w-full">
+                                ✔ อนุมัติ (เลือก FG/NG)
                             </button>
                             <button onclick="openRejectModal('${job.jobId}')" class="bg-red-100 hover:bg-red-200 text-red-700 py-1.5 rounded text-xs font-bold transition-colors border border-red-300 shadow-sm w-full">
                                 ✖ ตีกลับ (Reject)
@@ -1951,28 +1980,76 @@
         // ==========================================
         // Modal ตัดสินใจ (QC Inbox)
         // ==========================================
-        async function approveQC(jobId) {
-            if(!confirm(`ยืนยัน อนุมัติผ่าน งานรหัส ${jobId}\n(ยอด FG และ NG จะถูกบันทึกเข้าระบบ) ใช่หรือไม่?`)) return;
-            
+        function openApproveModal(jobId) {
+            document.getElementById('approve-job-id').value = jobId;
+            document.getElementById('app-fg').checked = true;
+            document.getElementById('app-ng').checked = true;
+            document.getElementById('qcApproveModal').classList.remove('hidden');
+        }
+
+        function closeApproveModal() {
+            document.getElementById('qcApproveModal').classList.add('hidden');
+        }
+
+        async function submitApprove(e) {
+            e.preventDefault();
+            const isFg = document.getElementById('app-fg').checked;
+            const isNg = document.getElementById('app-ng').checked;
+            const jobId = document.getElementById('approve-job-id').value;
+            const btn = document.getElementById('btn-submit-approve');
+
+            if (!isFg && !isNg) {
+                return alert("กรุณาเลือกอย่างน้อย 1 รายการ (FG หรือ NG)");
+            }
+
+            let payload = null;
+            let confirmText = "";
+
+            if (isFg && isNg) {
+                confirmText = `ยืนยันอนุมัติผ่านทั้ง FG และ NG ของงาน ${jobId} ใช่หรือไม่?`;
+                payload = {
+                    action: 'UPDATE_SORTING',
+                    jobId: jobId,
+                    status: 'Completed',
+                    closedBy: currentUser.name || currentUser.username
+                };
+            } else {
+                const rejectTarget = isFg ? 'NG' : 'FG';
+                const approvedTarget = isFg ? 'FG' : 'NG';
+                confirmText = `ยืนยันอนุมัติเฉพาะ ${approvedTarget} และตีกลับ ${rejectTarget} ของงาน ${jobId} ใช่หรือไม่?`;
+                payload = {
+                    action: 'UPDATE_SORTING',
+                    jobId: jobId,
+                    status: 'Rejected',
+                    closedBy: currentUser.name || currentUser.username,
+                    rejectTarget: rejectTarget,
+                    rejectReason: `QC อนุมัติเฉพาะ ${approvedTarget} และส่ง ${rejectTarget} กลับให้คัดใหม่`
+                };
+            }
+
+            if (!confirm(confirmText)) return;
+
+            btn.disabled = true;
+            btn.innerHTML = "⏳ กำลังดำเนินการ...";
             try {
-                const res = await fetch(SCRIPT_URL, { 
-                    method: 'POST', 
-                    body: JSON.stringify({ 
-                        action: 'UPDATE_SORTING', 
-                        jobId: jobId, 
-                        status: 'Completed', 
-                        closedBy: currentUser.name || currentUser.username
-                    })
+                const res = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
                 });
                 const result = await res.json();
-                if(result.status === 'success'){
-                    alert("อนุมัติสำเร็จ!");
-                    loadSortJobs(); 
+
+                if (result.status === 'success') {
+                    alert(isFg && isNg ? "อนุมัติสำเร็จ!" : "บันทึกการอนุมัติแบบแยก FG/NG เรียบร้อยแล้ว");
+                    closeApproveModal();
+                    loadSortJobs();
                 } else {
                     alert("❌ เกิดข้อผิดพลาด: " + result.message);
                 }
-            } catch(e) { 
-                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ"); 
+            } catch (e) {
+                alert("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "✅ ยืนยันอนุมัติ";
             }
         }
 
