@@ -570,7 +570,7 @@
                         <span class="font-bold text-red-700">NG</span>
                     </label>
                 </div>
-                <p class="text-xs text-gray-500 mb-4">* ถ้าเลือกเพียงด้านเดียว ระบบจะอนุมัติส่วนนั้น และส่งอีกส่วนกลับไปให้ Production คัดใหม่อัตโนมัติ</p>
+                <p class="text-xs text-gray-500 mb-4">* ถ้าเลือกเพียงด้านเดียว ระบบจะอนุมัติเฉพาะส่วนนั้น และอีกส่วนจะยังคงสถานะรอ QC อนุมัติ</p>
                 <div class="flex justify-end gap-2 pt-2 border-t">
                     <button type="button" onclick="closeApproveModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition">ยกเลิก</button>
                     <button type="submit" id="btn-submit-approve" class="px-5 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition shadow">✅ ยืนยันอนุมัติ</button>
@@ -1479,11 +1479,18 @@
 
                 if (job.status === 'Wait QC') {
                     statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
+                    const partialApproveBadge = `
+                        <div class="mt-1 flex flex-wrap gap-1">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${job.qcFgApproved ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">FG ${job.qcFgApproved ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${job.qcNgApproved ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">NG ${job.qcNgApproved ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
+                        </div>
+                    `;
                     fgNgDisplay = `
                         <div class="mt-2 p-1.5 bg-yellow-50 text-xs rounded border border-yellow-200 text-left">
                             <b class="text-gray-700">แจ้งยอดจัดคัด:</b><br>
                             <div><span class="text-green-700 font-bold">FG: ${fgBothUnits}</span></div>
                             <div><span class="text-red-700 font-bold">NG: ${ngBothUnits}</span></div>
+                            ${partialApproveBadge}
                         </div>`;
                 } else if (job.status === 'Rejected') {
                     statusBadge = `<span class="status-badge status-Rejected">ตีกลับ/แก้ไข</span>`;
@@ -1981,14 +1988,22 @@
         // Modal ตัดสินใจ (QC Inbox)
         // ==========================================
         function openApproveModal(jobId) {
+            const job = allPendingJobs.find(j => j.jobId === jobId) || {};
             document.getElementById('approve-job-id').value = jobId;
-            document.getElementById('app-fg').checked = true;
-            document.getElementById('app-ng').checked = true;
+            const fgCheckbox = document.getElementById('app-fg');
+            const ngCheckbox = document.getElementById('app-ng');
+
+            fgCheckbox.checked = !job.qcFgApproved;
+            ngCheckbox.checked = !job.qcNgApproved;
+            fgCheckbox.disabled = !!job.qcFgApproved;
+            ngCheckbox.disabled = !!job.qcNgApproved;
             document.getElementById('qcApproveModal').classList.remove('hidden');
         }
 
         function closeApproveModal() {
             document.getElementById('qcApproveModal').classList.add('hidden');
+            document.getElementById('app-fg').disabled = false;
+            document.getElementById('app-ng').disabled = false;
         }
 
         async function submitApprove(e) {
@@ -2014,16 +2029,15 @@
                     closedBy: currentUser.name || currentUser.username
                 };
             } else {
-                const rejectTarget = isFg ? 'NG' : 'FG';
                 const approvedTarget = isFg ? 'FG' : 'NG';
-                confirmText = `ยืนยันอนุมัติเฉพาะ ${approvedTarget} และตีกลับ ${rejectTarget} ของงาน ${jobId} ใช่หรือไม่?`;
+                confirmText = `ยืนยันอนุมัติเฉพาะ ${approvedTarget} ของงาน ${jobId} ใช่หรือไม่?\n\nอีกด้านจะยังคงรอ QC อนุมัติ`;
                 payload = {
                     action: 'UPDATE_SORTING',
                     jobId: jobId,
-                    status: 'Rejected',
+                    status: 'Wait QC',
                     closedBy: currentUser.name || currentUser.username,
-                    rejectTarget: rejectTarget,
-                    rejectReason: `QC อนุมัติเฉพาะ ${approvedTarget} และส่ง ${rejectTarget} กลับให้คัดใหม่`
+                    partialApprove: true,
+                    approveTargets: [approvedTarget]
                 };
             }
 
@@ -2039,7 +2053,7 @@
                 const result = await res.json();
 
                 if (result.status === 'success') {
-                    alert(isFg && isNg ? "อนุมัติสำเร็จ!" : "บันทึกการอนุมัติแบบแยก FG/NG เรียบร้อยแล้ว");
+                    alert(isFg && isNg ? "อนุมัติสำเร็จ!" : "บันทึกการอนุมัติบางส่วนเรียบร้อยแล้ว (อีกด้านยังรอ QC)");
                     closeApproveModal();
                     loadSortJobs();
                 } else {
