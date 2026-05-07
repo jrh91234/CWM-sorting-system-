@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ตัวอย่าง Time Picker แบบ Native</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+<div class="max-w-md mx-auto space-y-6">
+
+  <h1 class="text-xl font-bold text-gray-800">เปรียบเทียบ Time Picker</h1>
+
+  <!-- แบบเดิม: Flatpickr -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <p class="text-xs font-bold text-gray-400 uppercase mb-3">แบบเดิม — Flatpickr (ลูกศรเล็ก)</p>
+    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
+    <div class="flex items-center gap-2">
+      <input id="old-time" type="text" placeholder="HH:MM" readonly
+        class="w-full p-3 border-2 border-gray-200 rounded-lg text-lg font-mono text-center bg-gray-50 cursor-pointer">
+    </div>
+    <p class="text-xs text-gray-400 mt-2">กด input เพื่อดูตัวเลือก</p>
+  </div>
+
+  <!-- แบบใหม่: Native input type="time" -->
+  <div class="bg-white rounded-xl shadow p-5 border-2 border-blue-400">
+    <p class="text-xs font-bold text-blue-500 uppercase mb-3">แบบใหม่ — Native time picker</p>
+    <label class="block text-xs font-bold text-gray-600 mb-1">เวลา (Time - 24H)</label>
+    <input id="new-time" type="time" 
+      class="w-full p-3 border-2 border-blue-300 rounded-lg text-xl font-mono text-center focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+      style="color-scheme: light;">
+    <p class="text-xs text-gray-400 mt-2">
+      📱 มือถือ Android → หน้าปัดนาฬิกา<br>
+      📱 มือถือ iOS → ลูกเลื่อนดรัม (scroll wheel)<br>
+      💻 Desktop Chrome → popup นาฬิกา + พิมพ์ได้
+    </p>
+  </div>
+
+  <!-- ผลลัพธ์ -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <p class="text-xs font-bold text-gray-400 uppercase mb-3">ค่าที่จะถูกบันทึก</p>
+    <div class="flex gap-4">
+      <div class="flex-1 text-center">
+        <p class="text-xs text-gray-500">แบบเดิม</p>
+        <p id="old-val" class="text-2xl font-mono font-bold text-gray-400">--:--</p>
+      </div>
+      <div class="flex-1 text-center">
+        <p class="text-xs text-gray-500">แบบใหม่</p>
+        <p id="new-val" class="text-2xl font-mono font-bold text-blue-600">--:--</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  flatpickr("#old-time", {
+    enableTime: true, noCalendar: true, dateFormat: "H:i",
+    time_24hr: true, disableMobile: true, defaultDate: new Date()
+  });
+  document.getElementById('old-time').addEventListener('change', () => {
+    document.getElementById('old-val').textContent = document.getElementById('old-time').value || '--:--';
+  });
+  document.getElementById('new-time').addEventListener('change', () => {
+    document.getElementById('new-val').textContent = document.getElementById('new-time').value || '--:--';
+  });
+  // ตั้งค่า default เวลาปัจจุบัน
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('new-time').value = `${hh}:${mm}`;
+  document.getElementById('new-val').textContent = `${hh}:${mm}`;
+</script>
+</body>
+</html>
