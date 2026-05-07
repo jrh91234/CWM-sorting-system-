@@ -755,12 +755,16 @@
         }
 
         function initTimePicker() {
-            timePickerInstance = flatpickr("#sort-time", { 
-                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true, defaultDate: new Date() 
+            timePickerInstance = flatpickr("#sort-time", {
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true, defaultDate: new Date()
             });
-            timePickerEditInstance = flatpickr("#edit-sort-time", { 
-                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true 
+            timePickerEditInstance = flatpickr("#edit-sort-time", {
+                enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, disableMobile: true
             });
+            // ป้องกันพนักงานพิมพ์เวลาแบบ 12 ชม. เข้าไปโดยตรง (เช่น "2:00" แทน "14:00")
+            // Flatpickr ยังคงเขียนค่าผ่าน JavaScript ได้ปกติ แม้ input จะ readonly
+            document.getElementById('sort-time').readOnly = true;
+            document.getElementById('edit-sort-time').readOnly = true;
         }
 
         function setDefaultDateTime() {
@@ -946,11 +950,22 @@
             btn.innerHTML = "⏳ กำลังบันทึก...";
 
             const dateVal = document.getElementById('sort-date').value;
-            const timeVal = document.getElementById('sort-time').value;
+            const rawTimeVal = document.getElementById('sort-time').value;
             const machineVal = document.getElementById('sort-machine').value;
             const productVal = document.getElementById('sort-product').value;
             const stageVal = document.getElementById('sort-stage').value;
             const symptomVal = document.getElementById('sort-symptom').value;
+
+            // ตรวจสอบและ normalize เวลาให้เป็น HH:mm (24 ชั่วโมง)
+            if (!rawTimeVal || !/^\d{1,2}:\d{2}$/.test(rawTimeVal)) {
+                alert("กรุณาเลือกเวลาในรูปแบบ HH:MM (24 ชั่วโมง) เช่น 14:00");
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
+            const timeParts = rawTimeVal.split(':');
+            const timeHour = parseInt(timeParts[0], 10);
+            const timeVal = String(timeHour).padStart(2, '0') + ':' + timeParts[1];
 
             if (!symptomVal) {
                 alert("กรุณาเลือกอาการเสียจากระบบ");
@@ -2271,7 +2286,15 @@
 
             const jobId = document.getElementById('edit-job-id').value;
             const dateVal = document.getElementById('edit-sort-date').value;
-            const timeVal = document.getElementById('edit-sort-time').value;
+            const rawEditTimeVal = document.getElementById('edit-sort-time').value;
+            if (!rawEditTimeVal || !/^\d{1,2}:\d{2}$/.test(rawEditTimeVal)) {
+                alert("กรุณาเลือกเวลาในรูปแบบ HH:MM (24 ชั่วโมง) เช่น 14:00");
+                btn.disabled = false;
+                btn.innerHTML = "บันทึกการแก้ไข";
+                return;
+            }
+            const editTimeParts = rawEditTimeVal.split(':');
+            const timeVal = String(parseInt(editTimeParts[0], 10)).padStart(2, '0') + ':' + editTimeParts[1];
             const machineVal = document.getElementById('edit-sort-machine').value;
             const productVal = document.getElementById('edit-sort-product').value;
             const stageVal = document.getElementById('edit-sort-stage').value;
