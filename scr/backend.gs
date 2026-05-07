@@ -509,6 +509,118 @@ function doPost(e) {
 
   const action = data.action;
 
+  if (action === "GET_SORTING_PROD_SUMMARY") {
+    try {
+      const sheet = ss.getSheetByName("Production_Data");
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", summary: {}, totals: { fg: 0, ng: 0, jobs: 0 } })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const rows = sheet.getDataRange().getValues();
+      if (rows.length <= 1) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", summary: {}, totals: { fg: 0, ng: 0, jobs: 0 } })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const headers = rows[0].map(h => String(h || "").trim());
+      const getCol = (name) => headers.findIndex(h => h.toLowerCase() === String(name).toLowerCase());
+      const productCol = getCol("Product");
+      const fgCol = getCol("FG");
+      const ngKgCol = getCol("NG_Total");
+      const batchIdCol = getCol("Batch_ID");
+      const timestampCol = getCol("Timestamp");
+
+      if (productCol === -1 || fgCol === -1 || ngKgCol === -1 || batchIdCol === -1 || timestampCol === -1) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", summary: {}, totals: { fg: 0, ng: 0, jobs: 0 } })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const start = String(data.start || "").trim();
+      const end = String(data.end || "").trim();
+
+      // แปลง Timestamp (Date object หรือ Thai locale "d/m/พ.ศ. HH:mm:ss") → yyyy-MM-dd (ค.ศ.)
+      const toCalendarDate = (rawVal) => {
+        if (!rawVal) return "";
+        if (rawVal instanceof Date && !isNaN(rawVal.getTime())) {
+          const formatted = Utilities.formatDate(rawVal, "GMT+7", "yyyy-MM-dd");
+          const y = parseInt(formatted.substring(0, 4)) || 0;
+          if (y > 2500) return (y - 543) + formatted.substring(4);
+          return formatted;
+        }
+        const text = String(rawVal).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+          const y = parseInt(text.substring(0, 4)) || 0;
+          if (y > 2500) return (y - 543) + text.substring(4, 10);
+          return text.substring(0, 10);
+        }
+        const datePart = text.split(/[\s,]+/)[0] || "";
+        if (datePart.includes("/")) {
+          const dp = datePart.split("/");
+          if (dp.length === 3) {
+            let year = parseInt(dp[2]) || 0;
+            if (year > 2500) year -= 543;
+            return year + "-" + String(parseInt(dp[1]) || 1).padStart(2, "0") + "-" + String(parseInt(dp[0]) || 1).padStart(2, "0");
+          }
+        }
+        return "";
+      };
+
+      const getWppStrict = (productName) => {
+        const p = String(productName || "");
+        if (p.includes("10A")) return 0.00228;
+        if (p.includes("16A")) return 0.00279;
+        if (p.includes("20A")) return 0.00357;
+        if (p.includes("25/32A")) return 0.005335;
+        return null;
+      };
+
+      const summary = {};
+      let totalFg = 0;
+      let totalNg = 0;
+      let totalJobs = 0;
+      const seenBatchIds = {};
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const batchId = String(row[batchIdCol] || "").trim();
+        if (!batchId || batchId.indexOf("SORT-") !== 0) continue;
+
+        // กันนับซ้ำกรณีมีแถว Batch_ID เดิมซ้ำใน Production_Data
+        if (seenBatchIds[batchId]) continue;
+        seenBatchIds[batchId] = true;
+
+        // ใช้ Timestamp (วันที่อนุมัติ/เขียนลง Production_Data) เป็นตัว filter
+        const targetDateISO = toCalendarDate(row[timestampCol]);
+        if (!targetDateISO) continue;
+        if (start && targetDateISO < start) continue;
+        if (end && targetDateISO > end) continue;
+
+        const model = String(row[productCol] || "").trim();
+        if (!model) continue;
+
+        const wpp = getWppStrict(model);
+        const fg = parseFloat(row[fgCol]) || 0;
+        const ngKg = parseFloat(row[ngKgCol]) || 0;
+        const ng = (ngKg > 0 && wpp) ? Math.round(ngKg / wpp) : 0;
+
+        if (!summary[model]) summary[model] = { fg: 0, ng: 0, jobs: 0 };
+        summary[model].fg += fg;
+        summary[model].ng += ng;
+        summary[model].jobs += 1;
+
+        totalFg += fg;
+        totalNg += ng;
+        totalJobs += 1;
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        summary: summary,
+        totals: { fg: totalFg, ng: totalNg, jobs: totalJobs }
+      })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   // --- ส่วนที่ 1: ระบบ Authentication & Admin ---
   if (action === "LOGIN") {
     const sheet = ss.getSheetByName("Users");
@@ -1205,13 +1317,18 @@ function doPost(e) {
     if (rows.length <= 1) return ContentService.createTextOutput(JSON.stringify({status: "success", data: []})).setMimeType(ContentService.MimeType.JSON);
     const headers = rows[0].map(h => String(h).trim());
     const filterInstall = data.installId || "";
+    const filterPartId = data.partId || "";
     const filterMachine = data.machine || "";
     const results = [];
     for (let i = 1; i < rows.length; i++) {
       const obj = {};
       headers.forEach((h, idx) => { obj[h] = rows[i][idx] !== undefined ? rows[i][idx] : ""; });
       if (!obj.Check_ID) continue;
-      if (filterInstall && obj.Install_ID !== filterInstall) continue;
+      if (filterPartId) {
+        if (obj.Part_ID !== filterPartId) continue;
+      } else if (filterInstall) {
+        if (obj.Install_ID !== filterInstall) continue;
+      }
       if (filterMachine && obj.Machine !== filterMachine) continue;
       results.push(obj);
     }
@@ -1535,8 +1652,9 @@ function doPost(e) {
                       try {
                           let prodSheet = ss.getSheetByName("Production_Data");
                           if (prodSheet && prodSheet.getLastRow() > 1) {
-                              const prodRows = prodSheet.getDataRange().getValues();
-                              const prodHeaders = prodRows[0].map(h => h.toString().trim().toLowerCase());
+                              const lastRow = prodSheet.getLastRow();
+                              const totalCols = prodSheet.getLastColumn();
+                              const prodHeaders = prodSheet.getRange(1, 1, 1, totalCols).getValues()[0].map(h => h.toString().trim().toLowerCase());
                               const pDateIdx = prodHeaders.indexOf("date");
                               const pMachIdx = prodHeaders.indexOf("machine");
                               const pShiftIdx = prodHeaders.indexOf("shift");
@@ -1550,14 +1668,29 @@ function doPost(e) {
                                   return String(val || "").trim();
                               };
 
-                              if (pDateIdx !== -1 && pMachIdx !== -1 && pShiftIdx !== -1) {
-                                  // ลูปเดียว: หาทั้ง exact match (Machine+Date+Hour) และ fallback (Machine+Date)
-                                  for (let p = prodRows.length - 1; p >= 1; p--) {
-                                      const pDate = formatProdDate(prodRows[p][pDateIdx]);
+                              // ขั้น 1: อ่านเฉพาะคอลัมน์ Date เพื่อหาแถวเป้าหมาย
+                              let rowStart = -1, rowEnd = -1;
+                              if (pDateIdx !== -1) {
+                                  const dateCol = prodSheet.getRange(2, pDateIdx + 1, lastRow - 1, 1).getValues();
+                                  for (let i = dateCol.length - 1; i >= 0; i--) {
+                                      const d = formatProdDate(dateCol[i][0]);
+                                      if (d === dateStr) {
+                                          if (rowEnd === -1) rowEnd = i;
+                                          rowStart = i;
+                                      } else if (rowEnd !== -1 && d < dateStr) {
+                                          break;
+                                      }
+                                  }
+                              }
+
+                              // ขั้น 2: อ่านเฉพาะแถวที่ตรงวันที่ ทุกคอลัมน์
+                              if (rowStart !== -1 && pMachIdx !== -1 && pShiftIdx !== -1) {
+                                  const count = rowEnd - rowStart + 1;
+                                  const prodRows = prodSheet.getRange(rowStart + 2, 1, count, totalCols).getValues();
+                                  for (let p = prodRows.length - 1; p >= 0; p--) {
                                       const pMach = String(prodRows[p][pMachIdx] || "").trim();
                                       const pShift = String(prodRows[p][pShiftIdx] || "").trim();
-                                      if (pDate === dateStr && pMach === baseMachine && (pShift === "A" || pShift === "B")) {
-                                          // เก็บ fallback ไว้เผื่อ exact match ไม่เจอ
+                                      if (pMach === baseMachine && (pShift === "A" || pShift === "B")) {
                                           if (fallbackShift === "-") fallbackShift = pShift;
                                           if (pHourIdx !== -1) {
                                               const pHour = String(prodRows[p][pHourIdx] || "").trim();
@@ -1579,9 +1712,10 @@ function doPost(e) {
                                           }
                                       }
                                   }
-                                  // ใช้ fallback ถ้า exact match ไม่เจอ
                                   if (matchedShift === "-") matchedShift = fallbackShift;
                               }
+                              // fallback สุดท้าย: ใช้เวลาตัดสินกะ
+                              if (matchedShift === "-") matchedShift = shiftType === "Day" ? "A" : "B";
 
                               // === เขียน/อัปเดต Production_Data — รองรับ Recall ===
                               syncHeaders(prodSheet);
@@ -1602,11 +1736,10 @@ function doPost(e) {
                                   }
                               }
 
-                              if (ngKg > 0) {
-                                  const ngDetails = [{ type: symptom, qty: parseFloat(ngKg.toFixed(4)), unit: "kg" }];
+                              if (ngKg > 0 || fgPcs !== 0) {
+                                  const ngDetails = ngKg > 0 ? [{ type: symptom, qty: parseFloat(ngKg.toFixed(4)), unit: "kg" }] : [];
 
                                   if (existingProdRow > 0) {
-                                      // === Recall: อัปเดตแถวเดิมแทนการ append ===
                                       const updateCell = (colName, value) => {
                                           const idx = getProdCol(colName);
                                           if (idx !== -1) prodSheet.getRange(existingProdRow, idx + 1).setValue(value);
@@ -1623,7 +1756,6 @@ function doPost(e) {
                                       updateCell("NG_Details_JSON", JSON.stringify(ngDetails));
                                       updateCell("Shift_Type", shiftType);
                                   } else {
-                                      // === งานปกติ: append แถวใหม่ ===
                                       const newRow = new Array(freshHeaders.length).fill("");
                                       const mapData = (colName, value) => { const idx = getProdCol(colName); if (idx !== -1) newRow[idx] = value; };
 
@@ -1643,7 +1775,6 @@ function doPost(e) {
                                       prodSheet.appendRow(newRow);
                                   }
                               } else if (existingProdRow > 0) {
-                                  // Recall แล้วคัดใหม่ได้ NG = 0 → ลบแถวเดิมออกจาก Production_Data
                                   prodSheet.deleteRow(existingProdRow);
                               }
                           }
@@ -2010,6 +2141,355 @@ function doPost(e) {
     }
 
     return ContentService.createTextOutput(JSON.stringify({status: "success", countId: countId, saved: newRows.length})).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === 📬 Inbox: รวบรวมงานค้างจากหลาย sheet ส่งให้ frontend แสดงแบบ Email ===
+  if (action === "GET_INBOX") {
+    const role = data.role || "";
+    const userName = data.userName || "";
+    const todayISO = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+    const result = { maintenance: [], partsCheck: [], partsNearEnd: [], sortingWaitQC: [], pmTasks: [] };
+
+    // 1) งานซ่อมค้าง (Maintenance_Data: End_Time ว่าง)
+    try {
+      const mSheet = ss.getSheetByName("Maintenance_Data");
+      if (mSheet && mSheet.getLastRow() > 1) {
+        const mRows = mSheet.getDataRange().getValues();
+        const mH = mRows[0].map(h => String(h).trim());
+        const mi = (n) => mH.indexOf(n);
+        for (let i = 1; i < mRows.length; i++) {
+          const endTime = String(mRows[i][mi("End_Time")] || "").trim();
+          if (endTime && endTime !== "-") continue;
+          const dateRaw = mRows[i][mi("Date")];
+          let dateStr = "";
+          if (dateRaw instanceof Date) dateStr = Utilities.formatDate(dateRaw, "GMT+7", "yyyy-MM-dd");
+          else dateStr = String(dateRaw || "").trim().substring(0, 10);
+          const daysAgo = dateStr ? daysBetween(dateStr, todayISO) : 0;
+          result.maintenance.push({
+            jobId: String(mRows[i][mi("Job_ID")] || ""),
+            machine: String(mRows[i][mi("Machine")] || ""),
+            issueType: String(mRows[i][mi("Issue_Type")] || ""),
+            remark: String(mRows[i][mi("Remark")] || ""),
+            recorder: String(mRows[i][mi("Recorder")] || ""),
+            date: dateStr,
+            startTime: (mRows[i][mi("Start_Time")] instanceof Date) ? Utilities.formatDate(mRows[i][mi("Start_Time")], "GMT+7", "HH:mm") : String(mRows[i][mi("Start_Time")] || ""),
+            daysAgo: daysAgo
+          });
+        }
+      }
+    } catch (e) { console.error("Inbox maint err: " + e); }
+
+    // 2) อะไหล่ถึงรอบเช็ค + ใกล้หมดอายุ (Parts_Installation: Active only)
+    try {
+      const pSheet = ss.getSheetByName("Parts_Installation");
+      if (pSheet && pSheet.getLastRow() > 1) {
+        const pRows = pSheet.getDataRange().getValues();
+        const pH = pRows[0].map(h => String(h).trim());
+        const pi = (n) => pH.indexOf(n);
+        const activeMachines = [];
+        const activeRows = [];
+        for (let i = 1; i < pRows.length; i++) {
+          if (String(pRows[i][pi("Status")] || "").trim() !== "Active") continue;
+          const mac = String(pRows[i][pi("Machine")] || "").trim();
+          if (mac && activeMachines.indexOf(mac) === -1) activeMachines.push(mac);
+          activeRows.push(pRows[i]);
+        }
+        const macShots = activeMachines.length > 0 ? calcMultiMachineShots(ss, activeMachines) : {};
+        activeRows.forEach(r => {
+          const mac = String(r[pi("Machine")] || "").trim();
+          const installShot = parseInt(r[pi("Install_Shot")]) || 0;
+          const carried = parseInt(r[pi("Carried_Shots")]) || 0;
+          const lifeShots = parseInt(r[pi("Life_Shots")]) || 0;
+          const machineShot = macShots[mac] || 0;
+          const actualShots = carried + Math.max(0, machineShot - installShot);
+          const nextCheck = parseInt(r[pi("Next_Check_Shot")]) || 0;
+          const checkCount = parseInt(r[pi("Check_Count")]) || 0;
+          const effectiveLife = lifeShots * (checkCount + 1);
+          const pct = effectiveLife > 0 ? (actualShots / effectiveLife) * 100 : 0;
+          const autoNextCheck = lifeShots > 0 ? lifeShots * (checkCount + 1) : 0;
+          const item = {
+            installId: String(r[pi("Install_ID")] || ""),
+            machine: mac,
+            partId: String(r[pi("Part_ID")] || ""),
+            partName: String(r[pi("Part_Name")] || ""),
+            actualShots: actualShots,
+            lifeShots: lifeShots,
+            effectiveLife: effectiveLife,
+            pct: Math.round(pct * 10) / 10,
+            nextCheckShot: autoNextCheck,
+            checkCount: checkCount
+          };
+          if (autoNextCheck > 0 && actualShots >= autoNextCheck) {
+            result.partsCheck.push(item);
+          } else if (lifeShots > 0 && pct >= 90) {
+            result.partsNearEnd.push(item);
+          }
+        });
+      }
+    } catch (e) { console.error("Inbox parts err: " + e); }
+
+    // 3) งาน Sort รอ QC (Sorting_Data: status = "Wait QC")
+    if (role === "QC" || role === "Admin") {
+      try {
+        const sSheet = ss.getSheetByName("Sorting_Data");
+        if (sSheet && sSheet.getLastRow() > 1) {
+          const sRows = sSheet.getDataRange().getValues();
+          const sH = sRows[0].map(h => String(h).trim());
+          const si = (n) => sH.indexOf(n);
+          for (let i = 1; i < sRows.length; i++) {
+            if (String(sRows[i][si("Status")] || "").trim() !== "Wait QC") continue;
+            let product = String(sRows[i][si("Product")] || "").trim();
+            if (product.includes(" : ")) product = product.split(" : ").slice(1).join(" : ").trim();
+            result.sortingWaitQC.push({
+              jobId: String(sRows[i][si("Job_ID")] || ""),
+              product: product,
+              symptom: String(sRows[i][si("Symptom")] || ""),
+              qty: String(sRows[i][si("Qty")] || ""),
+              sorter: String(sRows[i][si("Sorter")] || ""),
+              fgQty: String(sRows[i][si("FG_Qty")] || ""),
+              ngQty: String(sRows[i][si("NG_Qty")] || "")
+            });
+          }
+        }
+      } catch (e) { console.error("Inbox sort err: " + e); }
+    }
+
+    // 4) แผน PM ที่ถึงกำหนด (Maintenance_Plan: Active + Next_Due_Date <= today + Assigned_To = user)
+    try {
+      const pmSheet = ss.getSheetByName("Maintenance_Plan");
+      if (pmSheet && pmSheet.getLastRow() > 1) {
+        const pmRows = pmSheet.getDataRange().getValues();
+        const pmH = pmRows[0].map(h => String(h).trim());
+        const pi = (n) => pmH.indexOf(n);
+        for (let i = 1; i < pmRows.length; i++) {
+          const status = String(pmRows[i][pi("Status")] || "").trim();
+          if (status !== "Active") continue;
+          const assignedTo = String(pmRows[i][pi("Assigned_To")] || "").trim();
+          if (assignedTo && assignedTo !== userName && role !== "Admin") continue;
+          const dueDateRaw = pmRows[i][pi("Next_Due_Date")];
+          let dueDate = "";
+          if (dueDateRaw instanceof Date) dueDate = Utilities.formatDate(dueDateRaw, "GMT+7", "yyyy-MM-dd");
+          else dueDate = String(dueDateRaw || "").trim().substring(0, 10);
+          if (!dueDate || dueDate > todayISO) continue;
+          const daysOverdue = dueDate ? daysBetween(dueDate, todayISO) : 0;
+          result.pmTasks.push({
+            planId: String(pmRows[i][pi("Plan_ID")] || ""),
+            machine: String(pmRows[i][pi("Machine")] || ""),
+            planType: String(pmRows[i][pi("Plan_Type")] || ""),
+            taskName: String(pmRows[i][pi("Task_Name")] || ""),
+            frequency: String(pmRows[i][pi("Frequency")] || ""),
+            assignedTo: assignedTo,
+            dueDate: dueDate,
+            daysOverdue: daysOverdue,
+            note: String(pmRows[i][pi("Note")] || "")
+          });
+        }
+      }
+    } catch (e) { console.error("Inbox PM err: " + e); }
+
+    const counts = {
+      maintenance: result.maintenance.length,
+      partsCheck: result.partsCheck.length,
+      partsNearEnd: result.partsNearEnd.length,
+      sortingWaitQC: result.sortingWaitQC.length,
+      pmTasks: result.pmTasks.length,
+      total: result.maintenance.length + result.partsCheck.length + result.partsNearEnd.length + result.sortingWaitQC.length + result.pmTasks.length
+    };
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", categories: result, counts: counts })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === COMPLETE_PM_TASK — ช่างกดทำเสร็จ + แนบรูป ===
+  if (action === "COMPLETE_PM_TASK") {
+    const planId = data.planId;
+    const note = data.note || "";
+    const now = new Date();
+    const doneDate = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd");
+    const doneBy = data.username || "Unknown";
+
+    let photoUrl = "";
+    if (data.imageBase64) {
+      photoUrl = saveImageToDrive(data.imageBase64, "PM_" + planId + "_" + Utilities.formatDate(now, "GMT+7", "yyyyMMdd_HHmmss") + ".jpg");
+    }
+
+    const pmSheet = ss.getSheetByName("Maintenance_Plan");
+    if (!pmSheet) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบชีท Maintenance_Plan"})).setMimeType(ContentService.MimeType.JSON);
+    const pmRows = pmSheet.getDataRange().getValues();
+    const pmH = pmRows[0].map(h => String(h).trim());
+    const pi = (n) => pmH.indexOf(n);
+    let planRow = -1, machine = "", taskName = "", dueDate = "";
+    for (let i = 1; i < pmRows.length; i++) {
+      if (String(pmRows[i][pi("Plan_ID")] || "").trim() === planId) {
+        planRow = i + 1;
+        machine = String(pmRows[i][pi("Machine")] || "");
+        taskName = String(pmRows[i][pi("Task_Name")] || "");
+        const dd = pmRows[i][pi("Next_Due_Date")];
+        dueDate = (dd instanceof Date) ? Utilities.formatDate(dd, "GMT+7", "yyyy-MM-dd") : String(dd || "").substring(0, 10);
+        break;
+      }
+    }
+    if (planRow === -1) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบแผน " + planId})).setMimeType(ContentService.MimeType.JSON);
+
+    let logSheet = ss.getSheetByName("Maintenance_Log");
+    if (!logSheet) {
+      logSheet = ss.insertSheet("Maintenance_Log");
+      logSheet.appendRow(["Log_ID", "Plan_ID", "Machine", "Task_Name", "Due_Date", "Done_Date", "Done_By", "Status", "Approved_By", "Approved_Date", "Photo_URLs", "Note", "Days_Diff"]);
+    }
+    const logId = "PML-" + Utilities.formatDate(now, "GMT+7", "yyMMddHHmmss") + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+    const daysDiff = dueDate ? daysBetween(dueDate, doneDate) : 0;
+    logSheet.appendRow([logId, planId, machine, taskName, dueDate, doneDate, doneBy, "Approved", doneBy, doneDate, photoUrl, note, daysDiff]);
+
+    // อัพเดต Next_Due_Date ใน Maintenance_Plan ทันที
+    const pmH2 = pmRows[0].map(h => String(h).trim());
+    const pi2 = (n) => pmH2.indexOf(n);
+    const freq = String(pmRows[planRow - 1][pi2("Frequency")] || "").trim().toLowerCase();
+    const interval = parseInt(pmRows[planRow - 1][pi2("Interval_Value")]) || 30;
+    const lastDoneCol = pi2("Last_Done_Date") + 1;
+    const nextDueCol = pi2("Next_Due_Date") + 1;
+    if (lastDoneCol > 0) pmSheet.getRange(planRow, lastDoneCol).setValue(doneDate);
+    if (nextDueCol > 0) {
+      let nextDate = new Date(doneDate + "T00:00:00+07:00");
+      if (freq === "daily") nextDate.setDate(nextDate.getDate() + 1);
+      else if (freq === "weekly") nextDate.setDate(nextDate.getDate() + 7);
+      else if (freq === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
+      else if (freq === "quarterly") nextDate.setMonth(nextDate.getMonth() + 3);
+      else if (freq === "yearly") nextDate.setFullYear(nextDate.getFullYear() + 1);
+      else nextDate.setDate(nextDate.getDate() + interval);
+      pmSheet.getRange(planRow, nextDueCol).setValue(Utilities.formatDate(nextDate, "GMT+7", "yyyy-MM-dd"));
+    }
+    SpreadsheetApp.flush();
+
+    logUserAction(doneBy, data.role || "Production", "COMPLETE_PM_TASK", "แผน " + planId + " เครื่อง " + machine);
+    return ContentService.createTextOutput(JSON.stringify({status: "success", message: "บันทึกเสร็จเรียบร้อย", logId: logId})).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === APPROVE_PM_TASK — หัวหน้าอนุมัติ ===
+  if (action === "APPROVE_PM_TASK") {
+    const logId = data.logId;
+    const approved = data.approved !== false;
+    const approver = data.username || "Unknown";
+    const now = new Date();
+    const approveDate = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd");
+
+    const logSheet = ss.getSheetByName("Maintenance_Log");
+    if (!logSheet) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบชีท Maintenance_Log"})).setMimeType(ContentService.MimeType.JSON);
+    const logRows = logSheet.getDataRange().getValues();
+    const lH = logRows[0].map(h => String(h).trim());
+    const li = (n) => lH.indexOf(n);
+    let logRow = -1, planId = "";
+    for (let i = 1; i < logRows.length; i++) {
+      if (String(logRows[i][li("Log_ID")] || "").trim() === logId) {
+        logRow = i + 1;
+        planId = String(logRows[i][li("Plan_ID")] || "");
+        break;
+      }
+    }
+    if (logRow === -1) return ContentService.createTextOutput(JSON.stringify({status: "error", message: "ไม่พบ Log " + logId})).setMimeType(ContentService.MimeType.JSON);
+
+    const statusCol = li("Status") + 1;
+    const approverCol = li("Approved_By") + 1;
+    const appDateCol = li("Approved_Date") + 1;
+    logSheet.getRange(logRow, statusCol).setValue(approved ? "Approved" : "Rejected");
+    if (approverCol > 0) logSheet.getRange(logRow, approverCol).setValue(approver);
+    if (appDateCol > 0) logSheet.getRange(logRow, appDateCol).setValue(approveDate);
+
+    // อัพเดต Next_Due_Date ใน Maintenance_Plan (เฉพาะ Approved)
+    if (approved && planId) {
+      const pmSheet = ss.getSheetByName("Maintenance_Plan");
+      if (pmSheet) {
+        const pmRows = pmSheet.getDataRange().getValues();
+        const pmH = pmRows[0].map(h => String(h).trim());
+        const pi = (n) => pmH.indexOf(n);
+        for (let i = 1; i < pmRows.length; i++) {
+          if (String(pmRows[i][pi("Plan_ID")] || "").trim() === planId) {
+            const freq = String(pmRows[i][pi("Frequency")] || "").trim().toLowerCase();
+            const interval = parseInt(pmRows[i][pi("Interval_Value")]) || 30;
+            const lastDoneCol = pi("Last_Done_Date") + 1;
+            const nextDueCol = pi("Next_Due_Date") + 1;
+            if (lastDoneCol > 0) pmSheet.getRange(i + 1, lastDoneCol).setValue(approveDate);
+            if (nextDueCol > 0) {
+              let nextDate = new Date(approveDate + "T00:00:00+07:00");
+              if (freq === "daily") nextDate.setDate(nextDate.getDate() + 1);
+              else if (freq === "weekly") nextDate.setDate(nextDate.getDate() + 7);
+              else if (freq === "monthly") nextDate.setMonth(nextDate.getMonth() + 1);
+              else if (freq === "quarterly") nextDate.setMonth(nextDate.getMonth() + 3);
+              else if (freq === "yearly") nextDate.setFullYear(nextDate.getFullYear() + 1);
+              else nextDate.setDate(nextDate.getDate() + interval);
+              pmSheet.getRange(i + 1, nextDueCol).setValue(Utilities.formatDate(nextDate, "GMT+7", "yyyy-MM-dd"));
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    SpreadsheetApp.flush();
+    logUserAction(approver, data.role || "Admin", "APPROVE_PM_TASK", (approved ? "อนุมัติ" : "ปฏิเสธ") + " Log " + logId);
+    return ContentService.createTextOutput(JSON.stringify({status: "success", message: approved ? "อนุมัติแล้ว" : "ปฏิเสธแล้ว"})).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // === GET_PM_SUMMARY — ข้อมูลสำหรับ Gantt Chart ===
+  if (action === "GET_PM_SUMMARY") {
+    const plans = [];
+    const logs = [];
+    try {
+      const pmSheet = ss.getSheetByName("Maintenance_Plan");
+      if (pmSheet && pmSheet.getLastRow() > 1) {
+        const pmRows = pmSheet.getDataRange().getValues();
+        const pmH = pmRows[0].map(h => String(h).trim());
+        const pi = (n) => pmH.indexOf(n);
+        for (let i = 1; i < pmRows.length; i++) {
+          if (String(pmRows[i][pi("Status")] || "").trim() !== "Active") continue;
+          const dd = pmRows[i][pi("Next_Due_Date")];
+          const ld = pmRows[i][pi("Last_Done_Date")];
+          plans.push({
+            planId: String(pmRows[i][pi("Plan_ID")] || ""),
+            machine: String(pmRows[i][pi("Machine")] || ""),
+            planType: String(pmRows[i][pi("Plan_Type")] || ""),
+            taskName: String(pmRows[i][pi("Task_Name")] || ""),
+            frequency: String(pmRows[i][pi("Frequency")] || ""),
+            intervalValue: parseInt(pmRows[i][pi("Interval_Value")]) || 0,
+            assignedTo: String(pmRows[i][pi("Assigned_To")] || ""),
+            nextDueDate: (dd instanceof Date) ? Utilities.formatDate(dd, "GMT+7", "yyyy-MM-dd") : String(dd || "").substring(0, 10),
+            lastDoneDate: (ld instanceof Date) ? Utilities.formatDate(ld, "GMT+7", "yyyy-MM-dd") : String(ld || "").substring(0, 10)
+          });
+        }
+      }
+    } catch (e) { console.error("PM summary plans err: " + e); }
+    try {
+      const logSheet = ss.getSheetByName("Maintenance_Log");
+      if (logSheet && logSheet.getLastRow() > 1) {
+        const logRows = logSheet.getDataRange().getValues();
+        const lH = logRows[0].map(h => String(h).trim());
+        const li = (n) => lH.indexOf(n);
+        for (let i = 1; i < logRows.length; i++) {
+          const dd = logRows[i][li("Due_Date")];
+          const done = logRows[i][li("Done_Date")];
+          logs.push({
+            logId: String(logRows[i][li("Log_ID")] || ""),
+            planId: String(logRows[i][li("Plan_ID")] || ""),
+            machine: String(logRows[i][li("Machine")] || ""),
+            taskName: String(logRows[i][li("Task_Name")] || ""),
+            dueDate: (dd instanceof Date) ? Utilities.formatDate(dd, "GMT+7", "yyyy-MM-dd") : String(dd || "").substring(0, 10),
+            doneDate: (done instanceof Date) ? Utilities.formatDate(done, "GMT+7", "yyyy-MM-dd") : String(done || "").substring(0, 10),
+            doneBy: String(logRows[i][li("Done_By")] || ""),
+            status: String(logRows[i][li("Status")] || ""),
+            daysDiff: parseInt(logRows[i][li("Days_Diff")]) || 0
+          });
+        }
+      }
+    } catch (e) { console.error("PM summary logs err: " + e); }
+
+    // คำนวณสถิติ
+    const approved = logs.filter(l => l.status === "Approved");
+    const onTime = approved.filter(l => l.daysDiff <= 0).length;
+    const late = approved.filter(l => l.daysDiff > 0).length;
+    const overdue = plans.filter(p => p.nextDueDate && p.nextDueDate <= Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd")).length;
+    const avgLateDays = late > 0 ? Math.round(approved.filter(l => l.daysDiff > 0).reduce((s, l) => s + l.daysDiff, 0) / late * 10) / 10 : 0;
+
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success", plans: plans, logs: logs,
+      stats: { total: approved.length, onTime: onTime, late: late, overdue: overdue, avgLateDays: avgLateDays, adherencePct: approved.length > 0 ? Math.round(onTime / approved.length * 1000) / 10 : 100 }
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 
   return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Unknown Action"})).setMimeType(ContentService.MimeType.JSON);
@@ -2775,6 +3255,158 @@ function debugSheetData() {
           row: i + 1, date: dateStr, shift: shift, type: type, fg: row[col["fg"]], ng: row[col["ng_total"]], isMatchToday: dateStr === today
       });
   }
-  
+  // ===================== Cost Management =====================
+
+  if (action === "GET_COST_DATA") {
+    try {
+      const sheet = ss.getSheetByName("Cost_Data");
+      if (!sheet || sheet.getLastRow() <= 1) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", data: [] })).setMimeType(ContentService.MimeType.JSON);
+      }
+      const rows = sheet.getDataRange().getValues();
+      const headers = rows[0].map(h => String(h || "").trim());
+      const result = [];
+      for (let i = 1; i < rows.length; i++) {
+        const obj = {};
+        headers.forEach((h, j) => { obj[h] = rows[i][j]; });
+        result.push(obj);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  if (action === "SAVE_COST_DATA") {
+    try {
+      let sheet = ss.getSheetByName("Cost_Data");
+      const costHeaders = ["Month","Sale","RM","Sub_Con","DL","OT","DL_Sup","OT_Sup","Utilities","Subcontract","Accessories","Repair","Other_OH","OH_FC","Transportation","Staff_Admin","Selling_Other","Admin_Other","Other_Income","Bonus_Admin","Bonus_OH","Mgt_Bonus","Extra","Interest","Tax","Depre","Updated_By","Updated_At"];
+      if (!sheet) {
+        sheet = ss.insertSheet("Cost_Data");
+        sheet.appendRow(costHeaders);
+      }
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+      const getCol = (name) => headers.findIndex(h => h === name);
+      const monthCol = getCol("Month");
+      if (monthCol === -1) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Column 'Month' not found" })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const monthVal = String(data.month || "").trim();
+      if (!monthVal) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Month is required" })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      let targetRow = -1;
+      if (sheet.getLastRow() > 1) {
+        const monthData = sheet.getRange(2, monthCol + 1, sheet.getLastRow() - 1, 1).getValues();
+        for (let i = 0; i < monthData.length; i++) {
+          if (String(monthData[i][0]).trim() === monthVal) { targetRow = i + 2; break; }
+        }
+      }
+
+      const now = new Date();
+      const rowData = {};
+      costHeaders.forEach(h => { rowData[h] = ""; });
+      rowData["Month"] = monthVal;
+      rowData["Updated_By"] = data.updatedBy || "";
+      rowData["Updated_At"] = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd HH:mm:ss");
+
+      const numFields = ["Sale","RM","Sub_Con","DL","OT","DL_Sup","OT_Sup","Utilities","Subcontract","Accessories","Repair","Other_OH","OH_FC","Transportation","Staff_Admin","Selling_Other","Admin_Other","Other_Income","Bonus_Admin","Bonus_OH","Mgt_Bonus","Extra","Interest","Tax","Depre"];
+      numFields.forEach(f => { rowData[f] = parseFloat(data[f]) || 0; });
+
+      if (targetRow > 0) {
+        const newRow = headers.map(h => rowData[h] !== undefined ? rowData[h] : "");
+        sheet.getRange(targetRow, 1, 1, newRow.length).setValues([newRow]);
+      } else {
+        const newRow = headers.map(h => rowData[h] !== undefined ? rowData[h] : "");
+        sheet.appendRow(newRow);
+      }
+
+      logUserAction(data.updatedBy || "Admin", "Admin", "SAVE_COST_DATA", "บันทึกต้นทุนเดือน " + monthVal);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Saved" })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  if (action === "DELETE_COST_DATA") {
+    try {
+      const sheet = ss.getSheetByName("Cost_Data");
+      if (!sheet) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Sheet not found" })).setMimeType(ContentService.MimeType.JSON);
+      const monthVal = String(data.month || "").trim();
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+      const monthCol = headers.indexOf("Month");
+      if (monthCol === -1 || !monthVal) return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Invalid" })).setMimeType(ContentService.MimeType.JSON);
+      const monthData = sheet.getRange(2, monthCol + 1, sheet.getLastRow() - 1, 1).getValues();
+      for (let i = monthData.length - 1; i >= 0; i--) {
+        if (String(monthData[i][0]).trim() === monthVal) { sheet.deleteRow(i + 2); break; }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // ===================== DL Staff Management =====================
+
+  if (action === "GET_DL_STAFF") {
+    try {
+      const sheet = ss.getSheetByName("DL_Staff");
+      if (!sheet || sheet.getLastRow() <= 1) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", data: [] })).setMimeType(ContentService.MimeType.JSON);
+      }
+      const rows = sheet.getDataRange().getValues();
+      const headers = rows[0].map(h => String(h || "").trim());
+      const result = [];
+      for (let i = 1; i < rows.length; i++) {
+        const obj = {};
+        headers.forEach((h, j) => { obj[h] = rows[i][j]; });
+        obj._row = i + 1;
+        result.push(obj);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  if (action === "SAVE_DL_STAFF") {
+    try {
+      const dlHeaders = ["Name","Position","Count","Salary","Category","Active"];
+      let sheet = ss.getSheetByName("DL_Staff");
+      if (!sheet) {
+        sheet = ss.insertSheet("DL_Staff");
+        sheet.appendRow(dlHeaders);
+      }
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+      const getCol = (name) => headers.findIndex(h => h === name);
+
+      const items = data.items || [];
+      // ลบข้อมูลเก่าทั้งหมดแล้วเขียนใหม่ (batch replace)
+      if (sheet.getLastRow() > 1) {
+        sheet.deleteRows(2, sheet.getLastRow() - 1);
+      }
+      items.forEach(item => {
+        const row = headers.map(h => {
+          if (h === "Name") return String(item.name || "").trim();
+          if (h === "Position") return String(item.position || "").trim();
+          if (h === "Count") return parseInt(item.count) || 0;
+          if (h === "Salary") return parseFloat(item.salary) || 0;
+          if (h === "Category") return String(item.category || "DL").trim();
+          if (h === "Active") return item.active !== false ? "Yes" : "No";
+          return "";
+        });
+        sheet.appendRow(row);
+      });
+
+      logUserAction(data.updatedBy || "Admin", "Admin", "SAVE_DL_STAFF", "บันทึกข้อมูลพนักงาน DL " + items.length + " รายการ");
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+
   return { status: "DEBUG_V3.55_Auth", summary: stats, last10Rows: detailedAnalysis };
 }
