@@ -165,6 +165,15 @@
                     </select>
                 </div>
 
+                <!-- 4b. Job Order (แผนการผลิต) -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต)</label>
+                    <select id="sort-joborder" onchange="onJobOrderChange('sort-joborder', 'sort-product')" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="">-- กำลังโหลด Job Order... --</option>
+                    </select>
+                    <p id="sort-joborder-info" class="text-[11px] text-gray-500 mt-1"></p>
+                </div>
+
                 <!-- 5. ขั้นตอนที่พบ -->
                 <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">ขั้นตอนที่พบ (Stage)</label>
@@ -309,6 +318,7 @@
                                     </div>
                                 </th>
                                 <th class="p-3 border-b bg-gray-100">รุ่นสินค้า</th>
+                                <th class="p-3 border-b bg-gray-100">Job Order</th>
                                 <th class="p-3 border-b bg-gray-100">อาการ (Symptom) / หมายเหตุ</th>
                                 <th class="p-3 border-b text-right bg-gray-100">จำนวน</th>
                                 <th class="p-3 border-b bg-gray-100">ผู้แจ้ง / คัด / QC</th>
@@ -316,7 +326,7 @@
                             </tr>
                         </thead>
                         <tbody id="sort-table-body" class="bg-white">
-                            <tr><td colspan="7" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
+                            <tr><td colspan="8" class="text-center py-8 text-gray-500">กำลังโหลดข้อมูล...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -398,6 +408,14 @@
                         <option value="S1B71819-JR (16A)">S1B71819-JR (16A)</option>
                         <option value="S1B29292-JR (20A)">S1B29292-JR (20A)</option>
                         <option value="51207080HC-JR (25/32A)">51207080HC-JR (25/32A)</option>
+                    </select>
+                </div>
+
+                <!-- 4b. Job Order (แผนการผลิต) -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต)</label>
+                    <select id="edit-sort-joborder" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <option value="">-- ไม่ระบุ Job Order --</option>
                     </select>
                 </div>
 
@@ -638,6 +656,7 @@
 
         const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG", "RTV"];
         let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
+        let allJobOrders = []; // รายการ Job Order จากแผนการผลิต (Plan_Data)
 
         window.onload = () => {
             const savedUser = localStorage.getItem('CWM_AUTH_USER');
@@ -666,6 +685,7 @@
             setDefaultDateTime(); 
             renderStageDropdown(); 
             fetchOptions(); 
+            fetchJobOrders();
             loadSortJobs();
         };
 
@@ -781,6 +801,64 @@
             if(timePickerInstance) {
                 timePickerInstance.setDate(new Date());
             }
+        }
+
+        // ==========================================
+        // 🗂️ Job Order (แผนการผลิต) — ดึงจาก Plan_Data ผ่าน GET_JOB_ORDERS
+        // ==========================================
+        async function fetchJobOrders() {
+            const selects = ['sort-joborder', 'edit-sort-joborder'];
+            try {
+                const res = await fetch(SCRIPT_URL + "?action=GET_JOB_ORDERS&includeOpen=true&_t=" + Date.now());
+                const data = await res.json();
+                allJobOrders = (data && data.status === 'success' && Array.isArray(data.jobOrders)) ? data.jobOrders : [];
+            } catch (err) {
+                console.error("fetchJobOrders error:", err);
+                allJobOrders = [];
+            }
+
+            // เลือกได้เฉพาะงานที่ยังเดินอยู่ (ไม่เอา Cancelled / Closed)
+            const selectable = allJobOrders.filter(j => j.jobOrder && j.manualStatus !== 'Cancelled' && j.manualStatus !== 'Closed');
+            selectable.sort((a, b) => String(b.planDate || '').localeCompare(String(a.planDate || '')));
+
+            let html = '<option value="">-- ไม่ระบุ Job Order --</option>';
+            selectable.forEach(j => {
+                const remain = Number(j.remainingQty || 0).toLocaleString();
+                html += `<option value="${j.jobOrder}">${j.jobOrder} | ${j.product || '-'} | คงเหลือ ${remain}</option>`;
+            });
+
+            selects.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const keep = el.value;
+                el.innerHTML = html;
+                if (keep) el.value = keep;
+            });
+
+            // ตารางแสดงรุ่น/เป้าของ Job Order จาก allJobOrders — วาดใหม่เมื่อข้อมูลมาถึงทีหลัง
+            if (allPendingJobs.length > 0) renderTable();
+        }
+
+        // เลือก Job Order แล้วเติมรุ่นสินค้าให้อัตโนมัติ + แสดงเป้า/คงเหลือ
+        function onJobOrderChange(joSelectId, productSelectId) {
+            const joEl = document.getElementById(joSelectId);
+            const infoEl = document.getElementById('sort-joborder-info');
+            const jo = allJobOrders.find(j => j.jobOrder === joEl.value);
+
+            if (infoEl) {
+                infoEl.innerHTML = jo
+                    ? `เป้า ${Number(jo.targetQty || 0).toLocaleString()} · ผลิตแล้ว ${Number(jo.producedFg || 0).toLocaleString()} · คงเหลือ ${Number(jo.remainingQty || 0).toLocaleString()} (${jo.status || '-'})`
+                    : '';
+            }
+
+            if (!jo || !jo.product) return;
+            const prodEl = document.getElementById(productSelectId);
+            if (!prodEl) return;
+            // จับคู่รุ่นแบบยืดหยุ่น (ชื่อรุ่นในแผนอาจไม่ตรงกับตัวเลือกเป๊ะ ๆ)
+            const match = Array.from(prodEl.options).find(opt =>
+                opt.value && (opt.value === jo.product || opt.value.includes(jo.product) || jo.product.includes(opt.value))
+            );
+            if (match) prodEl.value = match.value;
         }
 
         async function fetchOptions() {
@@ -1001,6 +1079,7 @@
                     qty: finalQty,
                     remark: finalRemark,
                     recorder: currentUser.name || currentUser.username,
+                    jobOrder: document.getElementById('sort-joborder').value,
                     status: 'Pending'
                 }
             };
@@ -1015,6 +1094,9 @@
                     setDefaultDateTime(); 
                     document.getElementById('sort-unit').value = 'kg';
                     document.getElementById('sort-stage').value = '';
+                    document.getElementById('sort-joborder').value = '';
+                    onJobOrderChange('sort-joborder', 'sort-product');
+                    fetchJobOrders();
                     loadSortJobs(); 
                 } else {
                     alert("❌ เกิดข้อผิดพลาด: " + result.message);
@@ -1031,7 +1113,7 @@
             const tbody = document.getElementById('sort-table-body');
             const tfoot = document.getElementById('sort-table-foot');
             
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500"><div class="inline-block w-6 h-6 border-4 border-blue-500 border-solid rounded-full border-t-transparent animate-spin"></div><br>กำลังโหลดข้อมูล...</td></tr>';
             tfoot.classList.add('hidden');
 
             try {
@@ -1054,7 +1136,7 @@
                 }
             } catch (err) {
                 console.error("loadSortJobs error:", err);
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-red-500">❌ โหลดข้อมูลไม่สำเร็จ</td></tr>';
                 const summaryContainer = document.getElementById('today-summary-content');
                 if (summaryContainer) {
                     summaryContainer.innerHTML = '<div class="col-span-full text-center py-4 text-red-500 font-bold">❌ โหลดข้อมูลสรุปไม่สำเร็จ</div>';
@@ -1431,7 +1513,7 @@
                     const kgStr = qtyInfo.kg.toFixed(2);
                     const pcsStr = qtyInfo.pcs.toString();
 
-                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.sorter || ''} ${job.closedBy || ''} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น`.toLowerCase();
+                    const searchString = `${job.jobId} ${job.date} ${job.product} ${job.symptom} ${job.remark || ''} ${job.recorder} ${job.sorter || ''} ${job.closedBy || ''} ${job.qty} ${kgStr}kg ${pcsStr}ชิ้น ${job.jobOrder || ''}`.toLowerCase();
                     return searchTerms.every(t => searchString.includes(t));
                 }
                 
@@ -1440,9 +1522,9 @@
 
             if (jobsToRender.length === 0) {
                 if (searchInput !== '') {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500 font-bold">❌ ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>';
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการในช่วงเวลาที่เลือก</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-green-600 font-bold">🎉 ไม่มีรายการในช่วงเวลาที่เลือก</td></tr>';
                 }
                 tfoot.classList.add('hidden');
                 return;
@@ -1584,6 +1666,16 @@
                     </div>
                 `;
 
+                // เซลล์ Job Order — แสดงรุ่น/เป้าหมายของแผนถ้าหา Job Order นั้นเจอ
+                let jobOrderCell = '<span class="text-gray-400">-</span>';
+                if (job.jobOrder) {
+                    const jo = allJobOrders.find(j => j.jobOrder === job.jobOrder);
+                    jobOrderCell = `<span class="font-mono font-bold text-indigo-700">${job.jobOrder}</span>`;
+                    if (jo) {
+                        jobOrderCell += `<div class="text-[11px] text-gray-500">${jo.product || ''}${jo.targetQty ? ' · เป้า ' + Number(jo.targetQty).toLocaleString() : ''}</div>`;
+                    }
+                }
+
                 let dateDisplay = job.date;
                 if (job.status === 'Completed' && job.closedDate) {
                     dateDisplay = `<span class="text-gray-500 line-through text-xs">${job.date}</span><br><span class="text-green-700 font-bold">${job.closedDate}</span>`;
@@ -1596,6 +1688,7 @@
                         </td>
                         <td class="p-3 text-sm font-medium text-gray-800 align-top whitespace-nowrap">${dateDisplay}</td>
                         <td class="p-3 text-sm font-bold text-blue-800 align-top">${job.product}</td>
+                        <td class="p-3 text-xs align-top whitespace-nowrap">${jobOrderCell}</td>
                         <td class="p-3 text-sm text-red-600 align-top">
                             ${job.symptom}
                             ${remarkHtml}
@@ -1673,7 +1766,7 @@
             machineHtml += '</ul>';
 
             tfoot.innerHTML = `
-                <tr><td colspan="7" class="p-0">
+                <tr><td colspan="8" class="p-0">
                 <div class="p-4 bg-gray-50 border-t-4 border-blue-400">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         
@@ -2269,6 +2362,14 @@
             document.getElementById('edit-sort-qty').value = qty; 
             document.getElementById('edit-sort-unit').value = unit;
 
+            // Job Order — ถ้างานเดิมผูกกับ JO ที่ปิดไปแล้ว ให้เติมตัวเลือกกลับเข้าไปเพื่อไม่ให้ค่าหาย
+            const joSelect = document.getElementById('edit-sort-joborder');
+            const currentJo = job.jobOrder || "";
+            if (currentJo && !Array.from(joSelect.options).some(opt => opt.value === currentJo)) {
+                joSelect.innerHTML += `<option value="${currentJo}">${currentJo}</option>`;
+            }
+            joSelect.value = currentJo;
+
             document.getElementById('editJobModal').classList.remove('hidden');
         }
 
@@ -2317,7 +2418,8 @@
                     symptom: symptomVal, 
                     qty: finalQty, 
                     remark: finalRemark, 
-                    recorder: currentUser.name || currentUser.username 
+                    recorder: currentUser.name || currentUser.username,
+                    jobOrder: document.getElementById('edit-sort-joborder').value
                 } 
             };
 
