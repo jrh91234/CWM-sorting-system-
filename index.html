@@ -167,8 +167,8 @@
 
                 <!-- 4b. Job Order (แผนการผลิต) -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต)</label>
-                    <select id="sort-joborder" onchange="onJobOrderChange('sort-joborder', 'sort-product')" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต) <span class="text-red-500">*</span></label>
+                    <select id="sort-joborder" required onchange="onJobOrderChange('sort-joborder', 'sort-product')" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
                         <option value="">-- กำลังโหลด Job Order... --</option>
                     </select>
                     <p id="sort-joborder-info" class="text-[11px] text-gray-500 mt-1"></p>
@@ -413,9 +413,9 @@
 
                 <!-- 4b. Job Order (แผนการผลิต) -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต)</label>
-                    <select id="edit-sort-joborder" class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
-                        <option value="">-- ไม่ระบุ Job Order --</option>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต) <span class="text-red-500">*</span></label>
+                    <select id="edit-sort-joborder" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
+                        <option value="">-- เลือก Job Order --</option>
                     </select>
                 </div>
 
@@ -655,7 +655,9 @@
         let dailyCapacityKg = 0;
 
         const DEFAULT_STAGES = ["ระหว่างกระบวนการผลิต", "FG", "RTV"];
-        let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES;
+        let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES.slice();
+        // ขั้นตอนหลักต้องมีเสมอ — ระบบใช้ตัดสินว่ายอดนั้นเคยถูกนับเป็น FG แล้วหรือยัง
+        DEFAULT_STAGES.forEach(st => { if (!currentStages.includes(st)) currentStages.unshift(st); });
         let allJobOrders = []; // รายการ Job Order จากแผนการผลิต (Plan_Data)
 
         window.onload = () => {
@@ -821,7 +823,7 @@
             const selectable = allJobOrders.filter(j => j.jobOrder && j.manualStatus !== 'Cancelled' && j.manualStatus !== 'Closed');
             selectable.sort((a, b) => String(b.planDate || '').localeCompare(String(a.planDate || '')));
 
-            let html = '<option value="">-- ไม่ระบุ Job Order --</option>';
+            let html = '<option value="">-- เลือก Job Order --</option>';
             selectable.forEach(j => {
                 const remain = Number(j.remainingQty || 0).toLocaleString();
                 html += `<option value="${j.jobOrder}">${j.jobOrder} | ${j.product || '-'} | คงเหลือ ${remain}</option>`;
@@ -966,7 +968,9 @@
             
             let html = '<option value="">-- เลือกขั้นตอน --</option>';
             currentStages.forEach(stage => {
-                html += `<option value="${stage}">${stage}</option>`;
+                // ขั้นตอนที่มีคำว่า FG/RTV = ของที่เคยนับเป็น FG ไปแล้ว ระบบจะหักออกจากยอด FG ของ Job Order
+                const note = /(FG|RTV)/i.test(stage) ? ' — หักออกจากยอด FG' : ' — ยอดใหม่ (ยังไม่เคยนับ)';
+                html += `<option value="${stage}">${stage}${note}</option>`;
             });
             select.innerHTML = html;
             editSelect.innerHTML = html;
@@ -987,10 +991,17 @@
         function renderStageList() {
             let html = '';
             currentStages.forEach((stage, index) => {
+                const locked = DEFAULT_STAGES.includes(stage);
+                const note = /(FG|RTV)/i.test(stage) ? 'หักออกจากยอด FG ของ Job Order' : 'ยอดใหม่ (ยังไม่เคยนับเป็น FG/NG)';
                 html += `
                     <li class="flex justify-between items-center p-3 hover:bg-gray-100 text-sm border-b last:border-b-0">
-                        <span class="text-gray-800 font-medium">${stage}</span>
-                        <button type="button" onclick="removeStage(${index})" class="text-red-500 hover:text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold transition">ลบ</button>
+                        <span>
+                            <span class="text-gray-800 font-medium">${stage}</span>
+                            <span class="block text-[11px] text-gray-500">${note}</span>
+                        </span>
+                        ${locked
+                            ? '<span class="text-[11px] text-gray-400 px-2 py-1">ขั้นตอนหลัก (ลบไม่ได้)</span>'
+                            : `<button type="button" onclick="removeStage(${index})" class="text-red-500 hover:text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold transition">ลบ</button>`}
                     </li>
                 `;
             });
@@ -1011,6 +1022,10 @@
         }
 
         function removeStage(index) {
+            if (DEFAULT_STAGES.includes(currentStages[index])) {
+                alert("ขั้นตอนหลักลบไม่ได้ เพราะระบบใช้ตัดสินว่ายอดนี้เคยถูกนับเป็น FG แล้วหรือยัง");
+                return;
+            }
             if (confirm(`คุณต้องการลบตัวเลือก "${currentStages[index]}" ใช่หรือไม่?`)) {
                 currentStages.splice(index, 1);
                 localStorage.setItem('CWM_STAGES', JSON.stringify(currentStages));
@@ -1052,6 +1067,21 @@
                 return;
             }
 
+            if (!stageVal) {
+                alert("กรุณาเลือกขั้นตอนที่พบ (Stage)\nระบบใช้ข้อมูลนี้ตัดสินว่ายอดนี้เคยถูกนับเป็น FG แล้วหรือยัง");
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
+
+            const jobOrderVal = document.getElementById('sort-joborder').value;
+            if (!jobOrderVal) {
+                alert("กรุณาเลือกเลข Job Order\nถ้าไม่ระบุ ยอดงานนี้จะไม่ถูกนับเข้าแผนการผลิตของจ๊อบใดเลย");
+                btn.disabled = false;
+                btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
+                return;
+            }
+
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${document.getElementById('sort-qty').value} ${document.getElementById('sort-unit').value}`;
             const finalDate = `${dateVal} ${timeVal}`;
@@ -1079,7 +1109,8 @@
                     qty: finalQty,
                     remark: finalRemark,
                     recorder: currentUser.name || currentUser.username,
-                    jobOrder: document.getElementById('sort-joborder').value,
+                    jobOrder: jobOrderVal,
+                    foundAt: stageVal,
                     status: 'Pending'
                 }
             };
@@ -2332,6 +2363,8 @@
                 stage = rMatch[1]; 
                 remark = rMatch[2]; 
             }
+            // คอลัมน์ Found_At (ถ้ามี) เชื่อถือได้กว่าข้อความใน Remark
+            if (job.foundAt) stage = job.foundAt;
             
             const stageSelect = document.getElementById('edit-sort-stage');
             let hasStageOption = Array.from(stageSelect.options).some(opt => opt.value === stage);
@@ -2407,6 +2440,19 @@
             const finalProduct = machineVal ? `${machineVal} : ${productVal}` : productVal;
             const finalQty = `${qtyVal} ${unitVal}`; 
             const finalDate = `${dateVal} ${timeVal}`; 
+            if (!stageVal) {
+                alert("กรุณาเลือกขั้นตอนที่พบ (Stage)");
+                btn.disabled = false;
+                btn.innerHTML = "บันทึกการแก้ไข";
+                return;
+            }
+            if (!document.getElementById('edit-sort-joborder').value) {
+                alert("กรุณาเลือกเลข Job Order");
+                btn.disabled = false;
+                btn.innerHTML = "บันทึกการแก้ไข";
+                return;
+            }
+
             const finalRemark = stageVal ? `[พบที่: ${stageVal}] ${remarkVal.trim()}`.trim() : remarkVal.trim();
 
             const payload = { 
@@ -2419,7 +2465,8 @@
                     qty: finalQty, 
                     remark: finalRemark, 
                     recorder: currentUser.name || currentUser.username,
-                    jobOrder: document.getElementById('edit-sort-joborder').value
+                    jobOrder: document.getElementById('edit-sort-joborder').value,
+                    foundAt: stageVal
                 } 
             };
 
