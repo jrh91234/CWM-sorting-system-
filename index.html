@@ -416,6 +416,7 @@
                     <label class="block text-xs font-bold text-gray-600 mb-1">Job Order (แผนการผลิต) <span class="text-red-500">*</span></label>
                     <select id="edit-sort-joborder" required class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white">
                         <option value="">-- เลือก Job Order --</option>
+                        <option value="__NONE__">🚫 ไม่มี Job Order</option>
                     </select>
                 </div>
 
@@ -658,6 +659,7 @@
         let currentStages = JSON.parse(localStorage.getItem('CWM_STAGES')) || DEFAULT_STAGES.slice();
         // ขั้นตอนหลักต้องมีเสมอ — ระบบใช้ตัดสินว่ายอดนั้นเคยถูกนับเป็น FG แล้วหรือยัง
         DEFAULT_STAGES.forEach(st => { if (!currentStages.includes(st)) currentStages.unshift(st); });
+        const NO_JOB_ORDER = '__NONE__'; // ตัวเลือก "ไม่มี Job Order" — บันทึกเป็นค่าว่าง (ไม่ผูกกับแผนใด)
         let allJobOrders = []; // รายการ Job Order จากแผนการผลิต (Plan_Data)
 
         window.onload = () => {
@@ -824,6 +826,7 @@
             selectable.sort((a, b) => String(b.planDate || '').localeCompare(String(a.planDate || '')));
 
             let html = '<option value="">-- เลือก Job Order --</option>';
+            html += `<option value="${NO_JOB_ORDER}">🚫 ไม่มี Job Order</option>`;
             selectable.forEach(j => {
                 const remain = Number(j.remainingQty || 0).toLocaleString();
                 html += `<option value="${j.jobOrder}">${j.jobOrder} | ${j.product || '-'} | คงเหลือ ${remain}</option>`;
@@ -1076,7 +1079,7 @@
 
             const jobOrderVal = document.getElementById('sort-joborder').value;
             if (!jobOrderVal) {
-                alert("กรุณาเลือกเลข Job Order\nถ้าไม่ระบุ ยอดงานนี้จะไม่ถูกนับเข้าแผนการผลิตของจ๊อบใดเลย");
+                alert("กรุณาเลือกเลข Job Order\nถ้างานนี้ไม่มี Job Order ให้เลือก \"ไม่มี Job Order\" (ยอดจะไม่ถูกนับเข้าแผนการผลิตของจ๊อบใดเลย)");
                 btn.disabled = false;
                 btn.innerHTML = "+ บันทึกเข้าระบบรอ Sort";
                 return;
@@ -1109,7 +1112,7 @@
                     qty: finalQty,
                     remark: finalRemark,
                     recorder: currentUser.name || currentUser.username,
-                    jobOrder: jobOrderVal,
+                    jobOrder: jobOrderVal === NO_JOB_ORDER ? '' : jobOrderVal,
                     foundAt: stageVal,
                     status: 'Pending'
                 }
@@ -2401,7 +2404,7 @@
             if (currentJo && !Array.from(joSelect.options).some(opt => opt.value === currentJo)) {
                 joSelect.innerHTML += `<option value="${currentJo}">${currentJo}</option>`;
             }
-            joSelect.value = currentJo;
+            joSelect.value = currentJo || NO_JOB_ORDER;
 
             document.getElementById('editJobModal').classList.remove('hidden');
         }
@@ -2465,7 +2468,7 @@
                     qty: finalQty, 
                     remark: finalRemark, 
                     recorder: currentUser.name || currentUser.username,
-                    jobOrder: document.getElementById('edit-sort-joborder').value,
+                    jobOrder: document.getElementById('edit-sort-joborder').value === NO_JOB_ORDER ? '' : document.getElementById('edit-sort-joborder').value,
                     foundAt: stageVal
                 } 
             };
