@@ -117,7 +117,7 @@
                     <button onclick="window.location.href='stock-count.html'" class="bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded text-sm transition-colors">
                         📦 นับ Stock
                     </button>
-                    <button id="btn-shift-report" onclick="window.location.href='shift-report.html'" class="hidden bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-sm transition-colors">
+                    <button id="btn-shift-report" onclick="window.location.href='shift-report.html'" class="bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-sm transition-colors">
                         🎯 ประเมินรายกะ
                     </button>
                     <button onclick="window.location.href='index.html'" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-sm transition-colors">
@@ -683,9 +683,6 @@
 
             document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name}</span> (${currentUser.role})`;
             
-            // หน้าประเมินรายกะ — ช่วงทดลอง เปิดให้เห็นเฉพาะ Admin
-            if (currentUser.role === 'Admin') document.getElementById('btn-shift-report').classList.remove('hidden');
-
             if (currentUser.role === 'QC' || currentUser.role === 'Admin') {
                 document.getElementById('tab-qc').classList.remove('hidden');
                 if(currentUser.role === 'QC') switchTab('qc');
