@@ -36,7 +36,7 @@
         <!-- Tabs -->
         <div class="flex gap-2 border-b border-gray-300">
             <button id="tab-btn-report" onclick="switchTab('report')" class="px-4 py-2 font-bold border-b-2 border-purple-600 text-purple-700">📊 รายงานกะ</button>
-            <button id="tab-btn-target" onclick="switchTab('target')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">🎯 เป้าสินค้า (ชิ้น/ชม.)</button>
+            <button id="tab-btn-target" onclick="switchTab('target')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">🎯 เป้ารุ่น × อาการ NG</button>
             <button id="tab-btn-help" onclick="switchTab('help')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">ℹ️ วิธีคิด</button>
         </div>
 
@@ -94,17 +94,17 @@
             <div class="bg-white rounded-xl shadow p-4 space-y-3">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                        <h2 class="font-bold text-gray-800">เป้าการคัดของแต่ละรุ่น (ชิ้น/ชั่วโมง)</h2>
-                        <p class="text-xs text-gray-500">รุ่น <code>*DEFAULT*</code> = ค่าที่ใช้กับรุ่นที่ยังไม่ได้ตั้งเป้า (ถ้าไม่ใส่ รุ่นนั้นจะไม่ถูกนำมาคิดเป้า)</p>
+                        <h2 class="font-bold text-gray-800">เป้าการคัดแยกตามเคส: รุ่น × อาการ NG (ชิ้น/ชั่วโมง)</h2>
+                        <p class="text-xs text-gray-500">รุ่น <code>*DEFAULT*</code> = ใช้กับทุกรุ่น · อาการว่าง = ใช้กับทุกอาการ — ระบบหาเป้าตามลำดับ: รุ่น+อาการ → ทุกรุ่น+อาการ → รุ่น+ทุกอาการ → ทุกรุ่น+ทุกอาการ (ถ้าไม่เจอเลย เคสนั้นจะไม่ถูกนำมาคิดเป้า)</p>
                     </div>
                     <div id="target-actions" class="hidden flex gap-2">
-                        <button onclick="addTargetRow()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-3 py-2 rounded-lg text-sm">+ เพิ่มรุ่น</button>
+                        <button onclick="addTargetRow()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-3 py-2 rounded-lg text-sm">+ เพิ่มเคส</button>
                         <button onclick="saveTargets()" id="btn-save-target" class="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-2 rounded-lg text-sm">💾 บันทึกเป้า</button>
                     </div>
                 </div>
                 <table class="w-full text-sm">
                     <thead class="bg-gray-100 text-gray-700 text-xs">
-                        <tr><th class="p-2 text-left">รุ่น (Model)</th><th class="p-2 text-right w-48">เป้า (ชิ้น/ชม.)</th><th class="p-2 w-16"></th></tr>
+                        <tr><th class="p-2 text-left">รุ่น (Model)</th><th class="p-2 text-left">อาการ NG</th><th class="p-2 text-right w-48">เป้า (ชิ้น/ชม.)</th><th class="p-2 w-16"></th></tr>
                     </thead>
                     <tbody id="target-body"></tbody>
                 </table>
@@ -115,6 +115,7 @@
                     <option value="S1B29292-JR (20A)">
                     <option value="51207080HC-JR (25/32A)">
                 </datalist>
+                <datalist id="symptom-list"></datalist>
                 <p id="target-readonly-note" class="hidden text-xs text-gray-500">เฉพาะ Admin เท่านั้นที่แก้ไขเป้าได้</p>
             </div>
         </section>
@@ -130,9 +131,9 @@
                         <li>มีการบันทึกยอดตั้งแต่เวลาเริ่ม OT (17:30 / 05:30) ขึ้นไป: นับถึงสิ้นกะ (20:00 / 08:00)</li>
                     </ul>
                 </li>
-                <li><b>งานที่มีให้คัด</b> = ยอดที่ค้างอยู่ตอนเริ่มกะ + งานที่ลงทะเบียนเข้ามาระหว่างกะ แปลงเป็นชั่วโมงด้วยเป้าของแต่ละสินค้า (ชิ้น ÷ เป้าชิ้น/ชม.)</li>
+                <li><b>งานที่มีให้คัด</b> = ยอดที่ค้างอยู่ตอนเริ่มกะ + งานที่ลงทะเบียนเข้ามาระหว่างกะ แปลงเป็นชั่วโมงด้วยเป้าของแต่ละเคส (รุ่น × อาการ NG: ชิ้น ÷ เป้าชิ้น/ชม.)</li>
                 <li><b>เป้าของกะ</b> = ค่าที่น้อยกว่าระหว่างข้อ 1 ("ตามกำลังคน") กับข้อ 2 ("ตามงานที่มีให้คัด")</li>
-                <li><b>ผลงานเทียบเป้า (%)</b> = ชั่วโมงที่คัดได้ ÷ เป้าของกะ โดยชั่วโมงที่คัดได้ = ชิ้นที่คัดแต่ละสินค้า ÷ เป้าของสินค้านั้น</li>
+                <li><b>ผลงานเทียบเป้า (%)</b> = ชั่วโมงที่คัดได้ ÷ เป้าของกะ โดยชั่วโมงที่คัดได้ = ชิ้นที่คัดแต่ละเคส ÷ เป้าของเคสนั้น</li>
                 <li><b>ชิ้น/ชม.ทำงาน</b> = ชิ้นที่คัดได้ทั้งหมด ÷ ชั่วโมงทำงาน (แสดงไว้ดูเฉยๆ ไม่ได้ใช้ตัดสินผลงาน)</li>
                 <li><b>เป้าแบบชิ้น</b> = เป้าของกะ (ชม.) × ชิ้นที่คัดได้ ÷ ชั่วโมงที่คัดได้ (ตามสัดส่วนสินค้าที่คัดจริง)</li>
             </ol>
@@ -160,7 +161,10 @@
         Day:   { start: '08:00', normalEnd: '17:00', otStart: '17:30', end: '20:00', breaks: [['12:00', '13:00'], ['17:00', '17:30']] },
         Night: { start: '20:00', normalEnd: '05:00', otStart: '05:30', end: '08:00', breaks: [['00:00', '01:00'], ['05:00', '05:30']] }
     };
-    const DEFAULT_TARGET_KEY = '*DEFAULT*';
+    const DEFAULT_TARGET_KEY = '*DEFAULT*';   // รุ่น = ใช้กับทุกรุ่น
+    const ANY_SYMPTOM = '';                    // อาการว่าง = ใช้กับทุกอาการ
+    const KEY_SEP = '\u0001';
+    const caseKey = (model, symptom) => model + KEY_SEP + (symptom || '');
 
     function getWeightPerPc(productStr) {
         if (!productStr) return 0.003;
@@ -215,22 +219,27 @@
         };
     }
 
-    function findTarget(model, targets) {
-        const exact = targets.find(t => t.model === model);
-        if (exact) return exact.pcsPerHour;
-        const def = targets.find(t => t.model === DEFAULT_TARGET_KEY);
-        return def ? def.pcsPerHour : 0;
+    // ลำดับการหาเป้า: รุ่น+อาการ → ทุกรุ่น+อาการ → รุ่น+ทุกอาการ → ทุกรุ่น+ทุกอาการ
+    function findTarget(model, symptom, targets) {
+        const sym = String(symptom || '').trim();
+        const order = [[model, sym], [DEFAULT_TARGET_KEY, sym], [model, ANY_SYMPTOM], [DEFAULT_TARGET_KEY, ANY_SYMPTOM]];
+        for (const [m, sy] of order) {
+            const t = targets.find(x => x.model === m && String(x.symptom || '').trim() === sy);
+            if (t) return t.pcsPerHour;
+        }
+        return 0;
     }
 
-    // รวมชิ้นตามรุ่น แล้วแปลงเป็นชั่วโมงตามเป้า
-    function piecesToHours(pcsByModel, targets) {
+    // รวมชิ้นตามเคส (รุ่น × อาการ NG) แล้วแปลงเป็นชั่วโมงตามเป้า
+    function piecesToHours(pcsByCase, targets) {
         let hours = 0, pcs = 0, missingPcs = 0;
-        const rows = Object.keys(pcsByModel).sort().map(model => {
-            const p = pcsByModel[model];
-            const rate = findTarget(model, targets);
+        const rows = Object.keys(pcsByCase).sort().map(key => {
+            const [model, symptom] = key.split(KEY_SEP);
+            const p = pcsByCase[key];
+            const rate = findTarget(model, symptom, targets);
             const h = rate > 0 ? p / rate : 0;
             if (rate > 0) { hours += h; pcs += p; } else { missingPcs += p; }
-            return { model, pcs: p, rate, hours: h };
+            return { model, symptom, pcs: p, rate, hours: h };
         });
         return { rows, hours, pcs, missingPcs };
     }
@@ -258,7 +267,7 @@
             if (isNaN(reg)) return;
             const pcs = qtyToPcs(j.qty, j.product);
             if (pcs <= 0) return;
-            const model = modelOf(j.product);
+            const model = caseKey(modelOf(j.product), j.symptom);
             if (reg < w.start) {
                 const jobLogs = logsByJob[j.jobId] || [];
                 let doneBefore;
@@ -284,7 +293,7 @@
         const sortedByModel = {}, bySorter = {};
         shiftLogs.forEach(l => {
             const pcs = qtyToPcs(l.fgSorted, l.product) + qtyToPcs(l.ngSorted, l.product);
-            const model = modelOf(l.product);
+            const model = caseKey(modelOf(l.product), l.symptom);
             sortedByModel[model] = (sortedByModel[model] || 0) + pcs;
             const name = l.sorter || '-';
             bySorter[name] = bySorter[name] || { pcsByModel: {}, count: 0 };
@@ -352,8 +361,19 @@
         document.getElementById('f-end').value = iso;
 
         renderShiftHelp();
+        fetchSymptomOptions();
         loadReport();
     };
+
+    // รายการอาการ NG ไว้ให้เลือกตอนตั้งเป้า (ใช้ GET_OPTIONS ตัวเดียวกับหน้าลงงานรอ Sort)
+    async function fetchSymptomOptions() {
+        try {
+            const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
+            const data = await res.json();
+            const list = Array.isArray(data.ngTypes) ? data.ngTypes : [];
+            document.getElementById('symptom-list').innerHTML = list.map(sy => `<option value="${String(sy).replace(/"/g, '&quot;')}">`).join('');
+        } catch (err) { console.error('fetchSymptomOptions error:', err); }
+    }
 
     function switchTab(tab) {
         ['report', 'target', 'help'].forEach(t => {
@@ -421,7 +441,7 @@
         renderTargets();
 
         const warnings = [];
-        if (sortTargets.length === 0) warnings.push('ยังไม่ได้ตั้งเป้าสินค้า — ไปที่แท็บ "🎯 เป้าสินค้า" เพื่อตั้งเป้าก่อน');
+        if (sortTargets.length === 0) warnings.push('ยังไม่ได้ตั้งเป้า — ไปที่แท็บ "🎯 เป้ารุ่น × อาการ NG" เพื่อตั้งเป้าก่อน');
         if (!data.firstLogAt) warnings.push('ยังไม่มีข้อมูลใน Sort_Log (ระบบจะเริ่มเก็บเมื่อผู้คัดกด "ส่งให้ QC ตรวจ" หลังอัปเดต backend)');
         else if (start + ' 08:00' < data.firstLogAt) warnings.push(`เริ่มเก็บ Sort_Log ตั้งแต่ ${data.firstLogAt} — กะก่อนหน้านั้นข้อมูลไม่ครบ`);
 
@@ -440,7 +460,7 @@
                     <td class="p-3 text-right num">${fmtH(r.avail.hours)}<div class="text-[11px] text-gray-500">${fmt(r.avail.pcs)} ชิ้น</div></td>
                     <td class="p-3 text-right num font-bold">${fmtH(r.targetHours)}<div class="text-[11px] font-normal text-gray-500">${r.basis}</div></td>
                     <td class="p-3 text-right num">${fmtH(r.sorted.hours)}<div class="text-[11px] text-gray-500">${fmt(r.sorted.pcs + r.sorted.missingPcs)} ชิ้น</div></td>
-                    <td class="p-3 text-right">${r.hasActivity ? perfBadge(r.perf) : '<span class="text-[11px]">ไม่มีการบันทึกยอด</span>'}${missing > 0 ? '<div class="text-[10px] text-orange-600">⚠ มีรุ่นที่ยังไม่ตั้งเป้า</div>' : ''}</td>
+                    <td class="p-3 text-right">${r.hasActivity ? perfBadge(r.perf) : '<span class="text-[11px]">ไม่มีการบันทึกยอด</span>'}${missing > 0 ? '<div class="text-[10px] text-orange-600">⚠ มีเคสที่ยังไม่ตั้งเป้า</div>' : ''}</td>
                     <td class="p-3 text-right num">${fmt(r.pcsPerWorkHour)}</td>
                     <td class="p-3 text-right num">≈ ${fmt(r.targetPcs)}</td>
                 </tr>`;
@@ -476,8 +496,8 @@
     function modelTable(title, h) {
         if (h.rows.length === 0) return `<div><h4 class="font-bold text-gray-700 mb-1">${title}</h4><p class="text-xs text-gray-400">ไม่มี</p></div>`;
         return `<div><h4 class="font-bold text-gray-700 mb-1">${title}</h4>
-            <table class="w-full text-xs"><thead class="bg-gray-100"><tr><th class="p-2 text-left">รุ่น</th><th class="p-2 text-right">ชิ้น</th><th class="p-2 text-right">เป้า ชิ้น/ชม.</th><th class="p-2 text-right">ชม.ตามเป้า</th></tr></thead><tbody>
-            ${h.rows.map(r => `<tr class="border-t"><td class="p-2">${r.model}</td><td class="p-2 text-right num">${fmt(r.pcs)}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.rate) : '<span class="text-orange-600">ยังไม่ตั้งเป้า</span>'}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.hours, 2) : '-'}</td></tr>`).join('')}
+            <table class="w-full text-xs"><thead class="bg-gray-100"><tr><th class="p-2 text-left">รุ่น / อาการ NG</th><th class="p-2 text-right">ชิ้น</th><th class="p-2 text-right">เป้า ชิ้น/ชม.</th><th class="p-2 text-right">ชม.ตามเป้า</th></tr></thead><tbody>
+            ${h.rows.map(r => `<tr class="border-t"><td class="p-2">${r.model}<div class="text-[11px] text-gray-500">${r.symptom || '-'}</div></td><td class="p-2 text-right num">${fmt(r.pcs)}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.rate) : '<span class="text-orange-600">ยังไม่ตั้งเป้า</span>'}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.hours, 2) : '-'}</td></tr>`).join('')}
             <tr class="border-t font-bold"><td class="p-2">รวม</td><td class="p-2 text-right num">${fmt(h.pcs + h.missingPcs)}</td><td></td><td class="p-2 text-right num">${fmt(h.hours, 2)}</td></tr>
             </tbody></table></div>`;
     }
@@ -515,16 +535,17 @@
     function renderTargets() {
         const isAdmin = currentUser.role === 'Admin';
         const body = document.getElementById('target-body');
-        const rows = sortTargets.length ? sortTargets : [];
-        body.innerHTML = rows.map(t => targetRowHtml(t.model, t.pcsPerHour, isAdmin)).join('')
-            || '<tr class="empty-row"><td colspan="3" class="p-4 text-center text-gray-400">ยังไม่มีการตั้งเป้า</td></tr>';
+        const rows = sortTargets.slice().sort((a, b) => (a.model + KEY_SEP + (a.symptom || '')).localeCompare(b.model + KEY_SEP + (b.symptom || '')));
+        body.innerHTML = rows.map(t => targetRowHtml(t.model, t.symptom, t.pcsPerHour, isAdmin)).join('')
+            || '<tr class="empty-row"><td colspan="4" class="p-4 text-center text-gray-400">ยังไม่มีการตั้งเป้า</td></tr>';
     }
 
-    function targetRowHtml(model, rate, editable) {
+    function targetRowHtml(model, symptom, rate, editable) {
         const esc = v => String(v ?? '').replace(/"/g, '&quot;');
-        if (!editable) return `<tr class="border-t"><td class="p-2">${model}</td><td class="p-2 text-right num">${fmt(rate)}</td><td></td></tr>`;
+        if (!editable) return `<tr class="border-t"><td class="p-2">${model}</td><td class="p-2">${symptom || '<span class="text-gray-400">ทุกอาการ</span>'}</td><td class="p-2 text-right num">${fmt(rate)}</td><td></td></tr>`;
         return `<tr class="border-t target-row">
             <td class="p-2"><input list="model-list" class="t-model w-full p-2 border rounded" value="${esc(model)}" placeholder="ชื่อรุ่น เช่น S1B29288-JR (10A)"></td>
+            <td class="p-2"><input list="symptom-list" class="t-symptom w-full p-2 border rounded" value="${esc(symptom)}" placeholder="อาการ NG (ว่าง = ทุกอาการ)"></td>
             <td class="p-2"><input type="number" min="1" class="t-rate w-full p-2 border rounded text-right" value="${esc(rate)}" placeholder="ชิ้น/ชม."></td>
             <td class="p-2 text-center"><button onclick="this.closest('tr').remove()" class="text-red-500 hover:text-red-700">🗑</button></td>
         </tr>`;
@@ -534,18 +555,19 @@
         const body = document.getElementById('target-body');
         const empty = body.querySelector('.empty-row');
         if (empty) empty.remove();
-        body.insertAdjacentHTML('beforeend', targetRowHtml('', '', true));
+        body.insertAdjacentHTML('beforeend', targetRowHtml('', '', '', true));
     }
 
     async function saveTargets() {
         const items = Array.from(document.querySelectorAll('#target-body .target-row')).map(tr => ({
             model: tr.querySelector('.t-model').value.trim(),
+            symptom: tr.querySelector('.t-symptom').value.trim(),
             pcsPerHour: parseFloat(tr.querySelector('.t-rate').value)
         }));
         const bad = items.find(i => !i.model || !(i.pcsPerHour > 0));
         if (bad) { alert('กรุณากรอกชื่อรุ่นและเป้า (มากกว่า 0) ให้ครบทุกแถว'); return; }
-        const names = items.map(i => i.model);
-        if (new Set(names).size !== names.length) { alert('มีชื่อรุ่นซ้ำกัน'); return; }
+        const names = items.map(i => caseKey(i.model, i.symptom));
+        if (new Set(names).size !== names.length) { alert('มีรุ่น + อาการ NG ซ้ำกัน'); return; }
 
         const btn = document.getElementById('btn-save-target');
         btn.disabled = true; btn.innerText = '⏳ กำลังบันทึก...';
