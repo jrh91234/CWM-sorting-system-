@@ -108,14 +108,6 @@
                     </thead>
                     <tbody id="target-body"></tbody>
                 </table>
-                <datalist id="model-list">
-                    <option value="*DEFAULT*">
-                    <option value="S1B29288-JR (10A)">
-                    <option value="S1B71819-JR (16A)">
-                    <option value="S1B29292-JR (20A)">
-                    <option value="51207080HC-JR (25/32A)">
-                </datalist>
-                <datalist id="symptom-list"></datalist>
                 <p id="target-readonly-note" class="hidden text-xs text-gray-500">เฉพาะ Admin เท่านั้นที่แก้ไขเป้าได้</p>
             </div>
         </section>
@@ -366,13 +358,35 @@
     };
 
     // รายการอาการ NG ไว้ให้เลือกตอนตั้งเป้า (ใช้ GET_OPTIONS ตัวเดียวกับหน้าลงงานรอ Sort)
+    // รุ่นสินค้า — ชุดเดียวกับช่อง "รุ่นสินค้า (Model)" ในหน้าลงงานรอ Sort
+    const MODEL_OPTIONS = ['S1B29288-JR (10A)', 'S1B71819-JR (16A)', 'S1B29292-JR (20A)', '51207080HC-JR (25/32A)'];
+    let symptomOptions = []; // อาการ NG — ชุดเดียวกับช่อง "อาการเสีย (NG Symptom)" ในหน้าลงงานรอ Sort
+
     async function fetchSymptomOptions() {
         try {
             const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
             const data = await res.json();
-            const list = Array.isArray(data.ngTypes) ? data.ngTypes : [];
-            document.getElementById('symptom-list').innerHTML = list.map(sy => `<option value="${String(sy).replace(/"/g, '&quot;')}">`).join('');
+            symptomOptions = Array.isArray(data.ngTypes) ? data.ngTypes.map(String) : [];
         } catch (err) { console.error('fetchSymptomOptions error:', err); }
+        // เติมตัวเลือกให้ dropdown อาการที่แสดงอยู่แล้ว โดยไม่ล้างค่าที่เลือกไว้
+        document.querySelectorAll('#target-body .t-symptom').forEach(sel => {
+            sel.innerHTML = symptomSelectOptions(sel.value);
+        });
+    }
+
+    const escAttr = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    function optionsHtml(list, value) {
+        // ค่าที่บันทึกไว้แต่ไม่อยู่ในรายการ (เช่น ชื่ออาการที่ถูกเปลี่ยน) ยังต้องแสดงอยู่
+        const items = list.slice();
+        if (value && !items.some(o => o.value === value)) items.push({ value, label: value + ' (ไม่อยู่ในรายการ)' });
+        return items.map(o => `<option value="${escAttr(o.value)}"${o.value === value ? ' selected' : ''}>${escAttr(o.label)}</option>`).join('');
+    }
+    function modelSelectOptions(value) {
+        return optionsHtml([{ value: '', label: '-- เลือกรุ่น --' }, { value: DEFAULT_TARGET_KEY, label: 'ทุกรุ่น (*DEFAULT*)' }]
+            .concat(MODEL_OPTIONS.map(m => ({ value: m, label: m }))), value);
+    }
+    function symptomSelectOptions(value) {
+        return optionsHtml([{ value: '', label: 'ทุกอาการ' }].concat(symptomOptions.map(sy => ({ value: sy, label: sy }))), value);
     }
 
     function switchTab(tab) {
@@ -542,10 +556,10 @@
 
     function targetRowHtml(model, symptom, rate, editable) {
         const esc = v => String(v ?? '').replace(/"/g, '&quot;');
-        if (!editable) return `<tr class="border-t"><td class="p-2">${model}</td><td class="p-2">${symptom || '<span class="text-gray-400">ทุกอาการ</span>'}</td><td class="p-2 text-right num">${fmt(rate)}</td><td></td></tr>`;
+        if (!editable) return `<tr class="border-t"><td class="p-2">${model === DEFAULT_TARGET_KEY ? 'ทุกรุ่น (*DEFAULT*)' : model}</td><td class="p-2">${symptom || '<span class="text-gray-400">ทุกอาการ</span>'}</td><td class="p-2 text-right num">${fmt(rate)}</td><td></td></tr>`;
         return `<tr class="border-t target-row">
-            <td class="p-2"><input list="model-list" class="t-model w-full p-2 border rounded" value="${esc(model)}" placeholder="ชื่อรุ่น เช่น S1B29288-JR (10A)"></td>
-            <td class="p-2"><input list="symptom-list" class="t-symptom w-full p-2 border rounded" value="${esc(symptom)}" placeholder="อาการ NG (ว่าง = ทุกอาการ)"></td>
+            <td class="p-2"><select class="t-model w-full p-2 border rounded bg-white">${modelSelectOptions(model)}</select></td>
+            <td class="p-2"><select class="t-symptom w-full p-2 border rounded bg-white">${symptomSelectOptions(symptom)}</select></td>
             <td class="p-2"><input type="number" min="1" class="t-rate w-full p-2 border rounded text-right" value="${esc(rate)}" placeholder="ชิ้น/ชม."></td>
             <td class="p-2 text-center"><button onclick="this.closest('tr').remove()" class="text-red-500 hover:text-red-700">🗑</button></td>
         </tr>`;
@@ -565,7 +579,7 @@
             pcsPerHour: parseFloat(tr.querySelector('.t-rate').value)
         }));
         const bad = items.find(i => !i.model || !(i.pcsPerHour > 0));
-        if (bad) { alert('กรุณากรอกชื่อรุ่นและเป้า (มากกว่า 0) ให้ครบทุกแถว'); return; }
+        if (bad) { alert('กรุณาเลือกรุ่นและกรอกเป้า (มากกว่า 0) ให้ครบทุกแถว'); return; }
         const names = items.map(i => caseKey(i.model, i.symptom));
         if (new Set(names).size !== names.length) { alert('มีรุ่น + อาการ NG ซ้ำกัน'); return; }
 
