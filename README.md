@@ -45,8 +45,10 @@ backend ใช้ค่านี้ตัดสินว่ายอดของ
 
 - **ข้อมูลยอดคัด**: ทุกครั้งที่ผู้คัดกด "ส่งให้ QC ตรวจ" หน้าเว็บส่ง `sortedFgQty` / `sortedNgQty` / `isResubmit`
   (ยอดที่คัดในรอบนั้น ไม่รวมยอดเดิมของงานตีกลับ) — backend บันทึกลงชีต `Sort_Log`
-- **เป้าสินค้า**: ชีต `Sort_Target` (Model, Pcs_Per_Hour) แก้ได้จากแท็บ "🎯 เป้าสินค้า" (Admin) — รุ่น `*DEFAULT*` = ค่าเริ่มต้น
-- **backend actions** (POST): `GET_SORT_EVAL_DATA` (start, end) และ `SAVE_SORT_TARGETS` (items, role, updatedBy)
+- **เป้าแยกตามเคส (รุ่น × อาการ NG)**: ชีต `Sort_Target` (Model, Symptom, Pcs_Per_Hour) แก้ได้จากแท็บ
+  "🎯 เป้ารุ่น × อาการ NG" (Admin) — รุ่น `*DEFAULT*` = ทุกรุ่น, อาการว่าง = ทุกอาการ
+  ลำดับการหาเป้า: รุ่น+อาการ → ทุกรุ่น+อาการ → รุ่น+ทุกอาการ → ทุกรุ่น+ทุกอาการ
+- **backend actions** (POST): `GET_SORT_EVAL_DATA` (start, end) — logs/jobs มีอาการ NG ของงานแนบมาด้วย และ `SAVE_SORT_TARGETS` (items, role, updatedBy)
   — ต้องเพิ่มที่ `Coil-winding/scr/backend.gs`
 - **ตารางกะ/เวลาพัก** อยู่ที่ `SHIFT_CONFIG` ใน `shift-report.html`
   | กะ | เริ่ม | เลิกปกติ | เริ่ม OT | สิ้นกะ | พัก |
