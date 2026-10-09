@@ -358,20 +358,30 @@
     };
 
     // รายการอาการ NG ไว้ให้เลือกตอนตั้งเป้า (ใช้ GET_OPTIONS ตัวเดียวกับหน้าลงงานรอ Sort)
-    // รุ่นสินค้า — ชุดเดียวกับช่อง "รุ่นสินค้า (Model)" ในหน้าลงงานรอ Sort
-    const MODEL_OPTIONS = ['S1B29288-JR (10A)', 'S1B71819-JR (16A)', 'S1B29292-JR (20A)', '51207080HC-JR (25/32A)'];
-    let symptomOptions = []; // อาการ NG — ชุดเดียวกับช่อง "อาการเสีย (NG Symptom)" ในหน้าลงงานรอ Sort
+    // รุ่น/อาการ NG สำหรับ dropdown ตั้งเป้า — ดึงจากระบบ (รุ่น/อาการที่เคยลงงานรอ Sort + master อาการ NG)
+    // รายการรุ่นด้านล่างเป็นค่าตั้งต้น (ชุดเดียวกับช่อง "รุ่นสินค้า (Model)" ในหน้าลงงานรอ Sort)
+    let modelOptions = ['S1B29288-JR (10A)', 'S1B71819-JR (16A)', 'S1B29292-JR (20A)', '51207080HC-JR (25/32A)'];
+    let symptomOptions = [];
+
+    function mergeOptions(current, extra) {
+        const set = new Set(current);
+        (extra || []).forEach(v => { const t = String(v || '').trim(); if (t) set.add(t); });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }
+
+    // เติมตัวเลือกให้ dropdown ที่แสดงอยู่แล้ว โดยไม่ล้างค่าที่เลือกไว้
+    function refreshTargetDropdowns() {
+        document.querySelectorAll('#target-body .t-model').forEach(sel => { sel.innerHTML = modelSelectOptions(sel.value); });
+        document.querySelectorAll('#target-body .t-symptom').forEach(sel => { sel.innerHTML = symptomSelectOptions(sel.value); });
+    }
 
     async function fetchSymptomOptions() {
         try {
             const res = await fetch(SCRIPT_URL + "?action=GET_OPTIONS");
             const data = await res.json();
-            symptomOptions = Array.isArray(data.ngTypes) ? data.ngTypes.map(String) : [];
+            symptomOptions = mergeOptions(symptomOptions, data.ngTypes);
         } catch (err) { console.error('fetchSymptomOptions error:', err); }
-        // เติมตัวเลือกให้ dropdown อาการที่แสดงอยู่แล้ว โดยไม่ล้างค่าที่เลือกไว้
-        document.querySelectorAll('#target-body .t-symptom').forEach(sel => {
-            sel.innerHTML = symptomSelectOptions(sel.value);
-        });
+        refreshTargetDropdowns();
     }
 
     const escAttr = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -383,7 +393,7 @@
     }
     function modelSelectOptions(value) {
         return optionsHtml([{ value: '', label: '-- เลือกรุ่น --' }, { value: DEFAULT_TARGET_KEY, label: 'ทุกรุ่น (*DEFAULT*)' }]
-            .concat(MODEL_OPTIONS.map(m => ({ value: m, label: m }))), value);
+            .concat(modelOptions.map(m => ({ value: m, label: m }))), value);
     }
     function symptomSelectOptions(value) {
         return optionsHtml([{ value: '', label: 'ทุกอาการ' }].concat(symptomOptions.map(sy => ({ value: sy, label: sy }))), value);
@@ -452,6 +462,8 @@
         }
 
         sortTargets = data.targets || [];
+        modelOptions = mergeOptions(modelOptions, data.models);
+        symptomOptions = mergeOptions(symptomOptions, data.symptoms);
         renderTargets();
 
         const warnings = [];
