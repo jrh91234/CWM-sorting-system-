@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>คู่มือประเมินรายกะ CWM Sorting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: แถบหัวข้อติดด้านบน + เนื้อหาคอลัมน์เดียวกว้างพอดีแท็บเล็ต, ขั้นตอนเป็นการ์ดตัวเลข, ตัวอย่างหน้าจอจำลองเป็นกล่องเส้นประ */
+:root {
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --ink: #18223a;
+  --muted: #5a6681;
+  --line: #d9dfeb;
+  --brand: #1e40af;       /* น้ำเงินเดียวกับแถบเมนูระบบ CWM */
+  --brand-soft: #e6ecfb;
+  --violet: #7c3aed;      /* ปุ่มประเมินรายกะ */
+  --indigo: #4f46e5;      /* ปุ่มพิมพ์ / บันทึก PDF */
+  --green: #15803d; --green-soft: #dcfce7;
+  --amber: #a16207; --amber-soft: #fef3c7;
+  --red: #b91c1c;   --red-soft: #fee2e2;
+  --note: #fff7e6; --note-line: #f2c46d;
+  --font-body: "IBM Plex Sans Thai", "Sarabun", "Noto Sans Thai", Tahoma, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1422; --surface: #172036; --ink: #e7ecf7; --muted: #a2adc6; --line: #2b3754;
+    --brand: #8fb0ff; --brand-soft: #1f2d52; --violet: #b69bff; --indigo: #a5a1ff;
+    --green: #6ee7a0; --green-soft: #12391f; --amber: #f5c96b; --amber-soft: #3a2e10;
+    --red: #fca5a5; --red-soft: #3d1717; --note: #2a2414; --note-line: #7a5f22;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1422; --surface: #172036; --ink: #e7ecf7; --muted: #a2adc6; --line: #2b3754;
+  --brand: #8fb0ff; --brand-soft: #1f2d52; --violet: #b69bff; --indigo: #a5a1ff;
+  --green: #6ee7a0; --green-soft: #12391f; --amber: #f5c96b; --amber-soft: #3a2e10;
+  --red: #fca5a5; --red-soft: #3d1717; --note: #2a2414; --note-line: #7a5f22;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.65; }
+.wrap { max-width: 880px; margin: 0 auto; padding-inline: 20px; padding-block: 0 48px; }
+
+header.top { padding-block: 28px 18px; }
+.kicker { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
+h1 { font-size: clamp(26px, 4.4vw, 36px); line-height: 1.25; margin: 4px 0 8px; text-wrap: balance; }
+.lead { color: var(--muted); max-width: 62ch; margin: 0; }
+
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); margin-inline: -20px; padding-inline: 20px; }
+nav.tabs ul { list-style: none; margin: 0; padding: 10px 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; white-space: nowrap; }
+nav.tabs a:hover, nav.tabs a:focus-visible { border-color: var(--brand); color: var(--brand); outline: none; }
+
+section { padding-top: 28px; scroll-margin-top: 72px; }
+h2 { font-size: 23px; margin: 0 0 4px; display: flex; align-items: baseline; gap: 10px; text-wrap: balance; }
+h2 .tag { font-size: 13px; font-weight: 600; color: var(--muted); }
+.sub { color: var(--muted); margin: 0 0 14px; }
+h3 { font-size: 18px; margin: 18px 0 8px; }
+p { margin: 0 0 10px; max-width: 68ch; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 720px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+.grid2 > * { min-width: 0; }
+
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: step; }
+ol.steps > li { counter-increment: step; display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+ol.steps > li::before { content: counter(step); width: 44px; height: 44px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; font-weight: 700; font-size: 19px; font-family: var(--font-mono); }
+ol.steps > li > div { min-width: 0; }
+ol.steps b.t { display: block; font-size: 18px; margin-bottom: 2px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 15px; color: #fff; white-space: nowrap; vertical-align: baseline; }
+.btn.violet { background: var(--violet); } .btn.indigo { background: var(--indigo); } .btn.green { background: var(--green); } .btn.brand { background: var(--brand); } .btn.grey { background: var(--line); color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn:not(.grey) { color: #10162a; } }
+:root[data-theme="dark"] .btn:not(.grey) { color: #10162a; }
+
+.note { background: var(--note); border: 1px solid var(--note-line); border-radius: 12px; padding: 12px 16px; margin-top: 12px; }
+.note b { color: var(--amber); }
+
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-size: 13px; color: var(--muted); font-weight: 600; background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mono { font-family: var(--font-mono); }
+
+.order { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
+.order span { background: var(--brand-soft); color: var(--brand); border-radius: 10px; padding: 6px 12px; font-weight: 600; font-size: 15px; }
+.order i { color: var(--muted); font-style: normal; }
+
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; font-family: var(--font-mono); font-size: 14px; }
+.pill.g { background: var(--green-soft); color: var(--green); } .pill.y { background: var(--amber-soft); color: var(--amber); } .pill.r { background: var(--red-soft); color: var(--red); }
+.pill.ot { background: var(--amber-soft); color: var(--amber); font-family: var(--font-body); font-size: 12px; }
+
+.calc { font-family: var(--font-mono); font-size: 15px; background: var(--bg); border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; line-height: 1.8; overflow-x: auto; }
+.calc .hl { color: var(--brand); font-weight: 600; }
+
+.mock { border: 2px dashed var(--line); border-radius: 12px; padding: 12px; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mock .lbl { font-size: 13px; color: var(--muted); width: 100%; }
+
+.check { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.check li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px 12px 46px; position: relative; }
+.check li::before { content: "!"; position: absolute; left: 14px; top: 13px; width: 22px; height: 22px; border-radius: 50%; background: var(--amber-soft); color: var(--amber); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+
+footer { margin-top: 36px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+<style>body { margin: 0; } img { max-width: 100%; }</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="padding-top:16px"><a href="shift-report.html" style="display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--brand);text-decoration:none;font-weight:600">← กลับหน้าประเมินรายกะ</a></div>
+  <header class="top">
+    <div class="kicker">CWM Sorting · ช่วงทดลอง</div>
+    <h1>คู่มือประเมินผลงานคัดรายกะ</h1>
+    <p class="lead">หน้าประเมินรายกะเทียบงานที่คัดได้กับเป้าของกะ โดยคิดเป็น "ชั่วโมงตามเป้า" ของแต่ละเคส (รุ่น × อาการ NG) งานที่คัดเร็วกับคัดช้าจึงเทียบกันได้อย่างยุติธรรม</p>
+  </header>
+
+  <nav class="tabs" aria-label="หัวข้อในคู่มือ">
+    <ul>
+      <li><a href="#open">เข้าหน้าประเมิน</a></li>
+      <li><a href="#target">ตั้งเป้า</a></li>
+      <li><a href="#daily">งานประจำวัน</a></li>
+      <li><a href="#report">อ่านรายงาน</a></li>
+      <li><a href="#pdf">พิมพ์ / PDF</a></li>
+      <li><a href="#tips">ข้อควรรู้</a></li>
+    </ul>
+  </nav>
+
+  <!-- 1 -->
+  <section id="open">
+    <h2>เข้าหน้าประเมิน <span class="tag">Admin</span></h2>
+    <p class="sub">ช่วงทดลองนี้ปุ่มแสดงเฉพาะบัญชี Admin</p>
+    <ol class="steps">
+      <li><div><b class="t">เข้าระบบด้วยบัญชี Admin</b>แล้วเปิดหน้า <b>ระบบจัดการงานรอ Sort</b></div></li>
+      <li><div><b class="t">กดปุ่ม <span class="btn violet">🎯 ประเมินรายกะ</span></b>ที่แถบเมนูด้านบน ระหว่างปุ่ม "นับ Stock" กับ "กลับหน้าหลัก"</div></li>
+      <li><div><b class="t">เลือกแท็บที่ต้องการ</b>
+        <div class="mock" style="margin-top:8px"><span class="lbl">แท็บในหน้าประเมิน</span><span class="btn grey">📊 รายงานกะ</span><span class="btn grey">🎯 เป้ารุ่น × อาการ NG</span><span class="btn grey">ℹ️ วิธีคิด</span></div>
+      </div></li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section id="target">
+    <h2>ตั้งเป้า <span class="tag">ทำครั้งแรกครั้งเดียว ปรับทีหลังได้</span></h2>
+    <p class="sub">เป้าคือจำนวนชิ้นที่คัดได้ต่อ 1 ชั่วโมง แยกตามรุ่นและอาการ NG</p>
+    <ol class="steps">
+      <li><div><b class="t">ไปที่แท็บ 🎯 เป้ารุ่น × อาการ NG</b>แล้วกด <span class="btn grey">+ เพิ่มเคส</span></div></li>
+      <li><div><b class="t">เลือกรุ่นและอาการ NG จาก dropdown</b>รายการดึงจากระบบ รุ่นหรืออาการใหม่จะขึ้นเองหลังมีการลงงานรอ Sort ด้วยรุ่นหรืออาการนั้น</div></li>
+      <li><div><b class="t">ใส่เป้า (ชิ้น/ชม.)</b>แล้วกด <span class="btn green">💾 บันทึกเป้า</span> ระบบบันทึกทั้งตาราง ลบแถวที่ไม่ใช้ด้วยปุ่ม 🗑</div></li>
+    </ol>
+
+    <h3>ตัวอย่างการตั้งเป้า</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>รุ่น</th><th>อาการ NG</th><th class="n">เป้า ชิ้น/ชม.</th><th>ใช้เมื่อ</th></tr></thead>
+        <tbody>
+          <tr><td>ทุกรุ่น (*DEFAULT*)</td><td>ทุกอาการ</td><td class="n">800</td><td>ค่ากลาง สำหรับเคสที่ไม่ได้ตั้งเฉพาะ</td></tr>
+          <tr><td>ทุกรุ่น (*DEFAULT*)</td><td>ร้าวใน</td><td class="n">400</td><td>อาการนี้คัดช้า ใช้กับทุกรุ่น</td></tr>
+          <tr><td>S1B29288-JR (10A)</td><td>ทุกอาการ</td><td class="n">1,000</td><td>รุ่นนี้คัดเร็วกว่าปกติ</td></tr>
+          <tr><td>S1B29288-JR (10A)</td><td>ครีบ</td><td class="n">1,500</td><td>เฉพาะรุ่นนี้กับอาการนี้</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>ระบบเลือกเป้าให้แต่ละงานอย่างไร</h3>
+    <p>ระบบหาแถวที่ตรงที่สุดตามลำดับนี้ เจอแถวไหนก่อนใช้แถวนั้น</p>
+    <div class="order"><span>รุ่น + อาการ</span><i>→</i><span>ทุกรุ่น + อาการ</span><i>→</i><span>รุ่น + ทุกอาการ</span><i>→</i><span>ทุกรุ่น + ทุกอาการ</span></div>
+    <div class="note"><b>ควรมีแถว "ทุกรุ่น + ทุกอาการ" ไว้เสมอ</b> ถ้างานไหนหาเป้าไม่เจอเลย งานนั้นจะไม่ถูกนำมาคิดเป้า และรายงานจะขึ้นคำเตือน "มีเคสที่ยังไม่ตั้งเป้า"</div>
+  </section>
+
+  <!-- 3 -->
+  <section id="daily">
+    <h2>งานประจำวัน <span class="tag">ผู้คัด · ฝ่ายผลิต · QC</span></h2>
+    <p class="sub">ใช้ระบบเหมือนเดิมทุกอย่าง ไม่มีขั้นตอนเพิ่ม</p>
+    <div class="grid2">
+      <div class="card">
+        <h3 style="margin-top:0">ลงงานรอ Sort</h3>
+        <p>ทุกงานที่ลงทะเบียนจะถูกนับเป็น "งานที่มีให้คัด" ของกะ ใส่รุ่นและอาการ NG ให้ถูกต้อง เพราะเป้าของงานขึ้นกับสองช่องนี้</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">ส่งยอดให้ QC</h3>
+        <p>เมื่อคัดเสร็จ กด <span class="btn brand">📤 ส่งให้ QC ตรวจ</span> ระบบบันทึกเวลา ชื่อผู้คัด และยอดที่คัดได้ให้อัตโนมัติ</p>
+      </div>
+    </div>
+    <ul class="check" style="margin-top:14px">
+      <li><b>คนที่คัดจริงต้องเป็นคนกดส่งยอด</b> ยอดจะนับให้ชื่อคนที่กดส่ง</li>
+      <li><b>ส่งยอดทันทีที่คัดเสร็จ</b> ระบบนับยอดเข้ากะตามเวลาที่กดส่ง และใช้เวลานี้ตัดสินว่ากะนั้นมี OT หรือไม่</li>
+      <li><b>งานที่ QC ตีกลับแล้วคัดซ้ำ</b> ระบบนับเฉพาะยอดที่คัดเพิ่มในรอบใหม่</li>
+    </ul>
+  </section>
+
+  <!-- 4 -->
+  <section id="report">
+    <h2>อ่านรายงานกะ</h2>
+    <p class="sub">แท็บ 📊 รายงานกะ → เลือกวันที่และกะ → กด <span class="btn violet">🔍 แสดงรายงาน</span></p>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>คอลัมน์</th><th>ความหมาย</th></tr></thead>
+        <tbody>
+          <tr><td>ชม.ทำงาน</td><td>เวลากะลบเวลาพัก ปกติ 8 ชม. ถ้ามีป้าย <span class="pill ot">OT</span> เป็น 10.5 ชม.</td></tr>
+          <tr><td>งานที่มีให้คัด</td><td>งานค้างตอนเริ่มกะ + งานที่ลงทะเบียนระหว่างกะ คิดเป็นชั่วโมงตามเป้า</td></tr>
+          <tr><td>เป้าของกะ</td><td>ค่าที่น้อยกว่าระหว่าง ชม.ทำงาน กับ งานที่มีให้คัด มีป้ายบอกว่า "ตามกำลังคน" หรือ "ตามงานที่มีให้คัด"</td></tr>
+          <tr><td>คัดได้</td><td>ชั่วโมงตามเป้าของงานที่คัดได้ พร้อมจำนวนชิ้น</td></tr>
+          <tr><td>ผลงานเทียบเป้า</td><td><span class="pill g">≥ 100%</span> <span class="pill y">85–99%</span> <span class="pill r">&lt; 85%</span></td></tr>
+          <tr><td>ชิ้น/ชม.ทำงาน</td><td>ไว้ดูประกอบ ไม่ได้ใช้ตัดสินผลงาน</td></tr>
+          <tr><td>เป้าแบบชิ้น</td><td>เป้าของกะแปลงเป็นจำนวนชิ้น ตามสัดส่วนงานที่คัดจริง</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px">กดที่แถวของกะเพื่อดูรายละเอียด ได้แก่ วิธีคิดของกะนั้น งานค้าง งานที่เข้ามา งานที่คัดได้แยกตามรุ่นและอาการ และยอดรายคน ถ้าดูทั้งสองกะจะมีแถว "รวมวัน" ต่อท้าย</p>
+
+    <h3>เวลากะที่ระบบใช้</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>กะ</th><th>ปกติ</th><th>นับเป็น OT เมื่อส่งยอดตั้งแต่</th><th>ถ้ามี OT นับถึง</th><th>เวลาพัก</th></tr></thead>
+        <tbody>
+          <tr><td><b>Day</b></td><td class="mono">08:00–17:00</td><td class="mono">17:30</td><td class="mono">20:00</td><td class="mono">12:00–13:00, 17:00–17:30</td></tr>
+          <tr><td><b>Night</b></td><td class="mono">20:00–05:00</td><td class="mono">05:30</td><td class="mono">08:00</td><td class="mono">00:00–01:00, 05:00–05:30</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:8px;color:var(--muted)">กะ Night ของวันที่ 9 คือคืนวันที่ 9 ต่อเนื่องถึงเช้าวันที่ 10</p>
+
+    <h3>ตัวอย่างการคิด: กะ Day ไม่มี OT</h3>
+    <div class="grid2">
+      <div class="calc">
+        ชม.ทำงาน = 9 − พัก 1 = <span class="hl">8 ชม.</span><br>
+        งานที่มีให้คัด<br>
+        &nbsp;A 10,000 ÷ 1,000 = 10 ชม.<br>
+        &nbsp;B &nbsp;3,000 ÷ &nbsp;&nbsp;600 = &nbsp;5 ชม.<br>
+        &nbsp;รวม = <span class="hl">15 ชม.</span><br>
+        เป้าของกะ = min(8, 15) = <span class="hl">8 ชม.</span> (ตามกำลังคน)
+      </div>
+      <div class="calc">
+        คัดได้<br>
+        &nbsp;A 5,000 ÷ 1,000 = 5 ชม.<br>
+        &nbsp;B 1,200 ÷ &nbsp;&nbsp;600 = 2 ชม.<br>
+        &nbsp;รวม = <span class="hl">7 ชม.</span> (6,200 ชิ้น)<br>
+        ผลงาน = 7 ÷ 8 = <span class="pill y">88%</span><br>
+        ชิ้น/ชม.ทำงาน = 6,200 ÷ 8 = 775
+      </div>
+    </div>
+    <div class="note"><b>ถ้างานมีน้อยกว่ากำลังคน</b> เช่น มีงานให้คัดแค่ 6 ชม. เป้าของกะจะเหลือ 6 ชม. คัดหมดได้ 100% พนักงานไม่โดนหักคะแนนเพราะไม่มีงานให้คัด</div>
+  </section>
+
+  <!-- 5 -->
+  <section id="pdf">
+    <h2>พิมพ์ / บันทึก PDF</h2>
+    <p class="sub">เอกสาร A4 แนวตั้ง 1–2 หน้า วิธีเดียวกับรายงานฝั่ง PD</p>
+    <ol class="steps">
+      <li><div><b class="t">แสดงรายงานก่อน</b>เลือกวันที่และกะ แล้วกด <span class="btn violet">🔍 แสดงรายงาน</span></div></li>
+      <li><div><b class="t">กด <span class="btn indigo">🖨️ พิมพ์ / บันทึก PDF</span></b>หน้าต่างพิมพ์ของเบราว์เซอร์จะเปิดขึ้น</div></li>
+      <li><div><b class="t">เลือกปลายทาง "บันทึกเป็น PDF"</b>หรือเลือกเครื่องพิมพ์ ชื่อไฟล์ตั้งให้ตามช่วงวันที่และกะ</div></li>
+    </ol>
+    <div class="card" style="margin-top:12px">
+      <b>ในเอกสารมี</b> สรุปผลรวม 4 ช่อง · ตารางรายกะ (ถ้าเลือกช่วงเกิน 7 วันจะสรุปเป็นรายวัน) · งานที่คัดได้ตามเคส · ยอดรายคน · วิธีคิดย่อ · ช่องลงชื่อ ผู้จัดทำ / หัวหน้างาน / ผู้อนุมัติ
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="tips">
+    <h2>ข้อควรรู้</h2>
+    <ul class="check">
+      <li><b>ข้อมูลเริ่มนับตั้งแต่ 9 ต.ค. 2026</b> กะก่อนหน้านั้นไม่มีบันทึกการส่งยอด ตัวเลขจึงไม่ครบ และหน้ารายงานจะขึ้นคำเตือน</li>
+      <li><b>เห็น "⚠ มีเคสที่ยังไม่ตั้งเป้า"</b> ให้กลับไปเพิ่มแถวในแท็บเป้า หรือตั้งแถว "ทุกรุ่น + ทุกอาการ"</li>
+      <li><b>กะที่ไม่มีการส่งยอดเลย</b> แสดงเป็นสีจาง และไม่ถูกนำไปรวมในแถว "รวมวัน"</li>
+      <li><b>ปรับเป้าให้ตรงความจริง</b> ช่วงแรกตั้งเป้ากลางไว้ก่อน เก็บข้อมูลจริง 1–2 สัปดาห์ แล้วดูค่า ชิ้น/ชม. ของแต่ละเคสในรายละเอียดกะ มาปรับเป้า</li>
+    </ul>
+  </section>
+
+  <footer>CWM Sorting · คู่มือหน้าประเมินผลงานคัดรายกะ (ช่วงทดลอง) · ปรับปรุง 9 ต.ค. 2026</footer>
+</div>
+</body>
+</html>
