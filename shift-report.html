@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ประเมินผลงานคัดรายกะ - CWM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+        .num { font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-blue-800 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <span class="text-xl font-bold tracking-wider">CWM SORTING</span>
+                    <span class="hidden md:inline-block bg-purple-600 text-xs px-2 py-1 rounded">ประเมินผลงานคัดรายกะ (ทดลอง)</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="user-info" class="text-sm"></div>
+                    <button onclick="window.location.href='index.html'" class="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-sm transition-colors">
+                        ← กลับหน้างานรอ Sort
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Tabs -->
+        <div class="flex gap-2 border-b border-gray-300">
+            <button id="tab-btn-report" onclick="switchTab('report')" class="px-4 py-2 font-bold border-b-2 border-purple-600 text-purple-700">📊 รายงานกะ</button>
+            <button id="tab-btn-target" onclick="switchTab('target')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">🎯 เป้าสินค้า (ชิ้น/ชม.)</button>
+            <button id="tab-btn-help" onclick="switchTab('help')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">ℹ️ วิธีคิด</button>
+        </div>
+
+        <!-- ===== รายงานกะ ===== -->
+        <section id="tab-report" class="space-y-4">
+            <div class="bg-white rounded-xl shadow p-4 flex flex-wrap items-end gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ตั้งแต่วันที่</label>
+                    <input type="date" id="f-start" class="p-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ถึงวันที่</label>
+                    <input type="date" id="f-end" class="p-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">กะ</label>
+                    <select id="f-shift" class="p-2 border rounded-lg bg-white">
+                        <option value="">ทั้งหมด</option>
+                        <option value="Day">Day</option>
+                        <option value="Night">Night</option>
+                    </select>
+                </div>
+                <button onclick="loadReport()" id="btn-load" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg">🔍 แสดงรายงาน</button>
+                <p class="text-xs text-gray-500 ml-auto">กะ Night ของวันที่ X = 20:00 วันที่ X ถึง 08:00 วันถัดไป</p>
+            </div>
+
+            <div id="report-warning" class="hidden bg-yellow-50 border border-yellow-300 text-yellow-800 text-sm rounded-lg p-3"></div>
+
+            <div class="bg-white rounded-xl shadow overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 text-gray-700 text-xs">
+                        <tr>
+                            <th class="p-3 text-left">วันที่</th>
+                            <th class="p-3 text-left">กะ</th>
+                            <th class="p-3 text-right">ชม.ทำงาน</th>
+                            <th class="p-3 text-right">งานที่มีให้คัด</th>
+                            <th class="p-3 text-right">เป้าของกะ</th>
+                            <th class="p-3 text-right">คัดได้</th>
+                            <th class="p-3 text-right">ผลงานเทียบเป้า</th>
+                            <th class="p-3 text-right">ชิ้น/ชม.ทำงาน</th>
+                            <th class="p-3 text-right">เป้าแบบชิ้น</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-body">
+                        <tr><td colspan="9" class="p-6 text-center text-gray-400">เลือกช่วงวันที่แล้วกด "แสดงรายงาน"</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="report-detail" class="hidden bg-white rounded-xl shadow p-4"></div>
+        </section>
+
+        <!-- ===== เป้าสินค้า ===== -->
+        <section id="tab-target" class="hidden space-y-4">
+            <div class="bg-white rounded-xl shadow p-4 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="font-bold text-gray-800">เป้าการคัดของแต่ละรุ่น (ชิ้น/ชั่วโมง)</h2>
+                        <p class="text-xs text-gray-500">รุ่น <code>*DEFAULT*</code> = ค่าที่ใช้กับรุ่นที่ยังไม่ได้ตั้งเป้า (ถ้าไม่ใส่ รุ่นนั้นจะไม่ถูกนำมาคิดเป้า)</p>
+                    </div>
+                    <div id="target-actions" class="hidden flex gap-2">
+                        <button onclick="addTargetRow()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-3 py-2 rounded-lg text-sm">+ เพิ่มรุ่น</button>
+                        <button onclick="saveTargets()" id="btn-save-target" class="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-2 rounded-lg text-sm">💾 บันทึกเป้า</button>
+                    </div>
+                </div>
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 text-gray-700 text-xs">
+                        <tr><th class="p-2 text-left">รุ่น (Model)</th><th class="p-2 text-right w-48">เป้า (ชิ้น/ชม.)</th><th class="p-2 w-16"></th></tr>
+                    </thead>
+                    <tbody id="target-body"></tbody>
+                </table>
+                <datalist id="model-list">
+                    <option value="*DEFAULT*">
+                    <option value="S1B29288-JR (10A)">
+                    <option value="S1B71819-JR (16A)">
+                    <option value="S1B29292-JR (20A)">
+                    <option value="51207080HC-JR (25/32A)">
+                </datalist>
+                <p id="target-readonly-note" class="hidden text-xs text-gray-500">เฉพาะ Admin เท่านั้นที่แก้ไขเป้าได้</p>
+            </div>
+        </section>
+
+        <!-- ===== วิธีคิด ===== -->
+        <section id="tab-help" class="hidden bg-white rounded-xl shadow p-5 text-sm text-gray-700 space-y-3 leading-relaxed">
+            <h2 class="font-bold text-gray-800 text-base">วิธีคิดเป้าของกะ</h2>
+            <p>คิดเป้าของกะเป็น <b>"ชั่วโมงตามเป้า"</b> ก่อน แล้วค่อยแปลงเป็นชิ้น เพื่อให้สินค้าที่คัดเร็วกับคัดช้าเทียบกันได้</p>
+            <ol class="list-decimal ml-5 space-y-1">
+                <li><b>ชั่วโมงทำงาน</b> = เวลากะที่นับ − เวลาพักตามตาราง
+                    <ul class="list-disc ml-5 text-gray-600">
+                        <li>ไม่มี OT: นับถึงเวลาเลิกงานปกติ (Day 17:00 / Night 05:00)</li>
+                        <li>มีการบันทึกยอดตั้งแต่เวลาเริ่ม OT (17:30 / 05:30) ขึ้นไป: นับถึงสิ้นกะ (20:00 / 08:00)</li>
+                    </ul>
+                </li>
+                <li><b>งานที่มีให้คัด</b> = ยอดที่ค้างอยู่ตอนเริ่มกะ + งานที่ลงทะเบียนเข้ามาระหว่างกะ แปลงเป็นชั่วโมงด้วยเป้าของแต่ละสินค้า (ชิ้น ÷ เป้าชิ้น/ชม.)</li>
+                <li><b>เป้าของกะ</b> = ค่าที่น้อยกว่าระหว่างข้อ 1 ("ตามกำลังคน") กับข้อ 2 ("ตามงานที่มีให้คัด")</li>
+                <li><b>ผลงานเทียบเป้า (%)</b> = ชั่วโมงที่คัดได้ ÷ เป้าของกะ โดยชั่วโมงที่คัดได้ = ชิ้นที่คัดแต่ละสินค้า ÷ เป้าของสินค้านั้น</li>
+                <li><b>ชิ้น/ชม.ทำงาน</b> = ชิ้นที่คัดได้ทั้งหมด ÷ ชั่วโมงทำงาน (แสดงไว้ดูเฉยๆ ไม่ได้ใช้ตัดสินผลงาน)</li>
+                <li><b>เป้าแบบชิ้น</b> = เป้าของกะ (ชม.) × ชิ้นที่คัดได้ ÷ ชั่วโมงที่คัดได้ (ตามสัดส่วนสินค้าที่คัดจริง)</li>
+            </ol>
+            <div id="help-shifts"></div>
+            <h3 class="font-bold text-gray-800">หมายเหตุ</h3>
+            <ul class="list-disc ml-5 space-y-1 text-gray-600">
+                <li>ยอดที่คัดได้มาจากชีต <code>Sort_Log</code> ซึ่งบันทึกทุกครั้งที่ผู้คัดกด "ส่งให้ QC ตรวจ" — นับเข้ากะตามเวลาที่ส่งยอด และนับยอดให้ชื่อผู้คัดที่ส่งยอด</li>
+                <li>งานที่ QC ตีกลับแล้วคัดซ้ำ นับเฉพาะยอดที่คัดเพิ่มในรอบใหม่</li>
+                <li>งานค้างตอนเริ่มกะ = งานที่ลงทะเบียนก่อนเริ่มกะ และยังไม่มีการส่งยอดคัดก่อนเริ่มกะ</li>
+                <li>คิดเป็นภาพรวมทั้งกะ (ไม่แยกรายคน) — ยอดรายคนแสดงไว้ดูประกอบ</li>
+                <li>กะที่ไม่มีการบันทึกยอดเลย จะไม่ถูกนำมารวมในสรุปรายวัน</li>
+            </ul>
+        </section>
+    </main>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyt3Bf_2h21BBcCHQSjizowy_kD5vsoUqgaC_YmVjLuQybJO1BBRt3eaSM0PuKEFfvruw/exec";
+    let currentUser = null;
+    let sortTargets = [];   // [{model, pcsPerHour}]
+    let lastReport = [];    // ผลคำนวณล่าสุด (ไว้เปิดดูรายละเอียด)
+
+// @@CALC-START — ส่วนคำนวณ (ไม่แตะ DOM)
+    // ตารางกะ — เวลาเป็น "HH:mm" ของวันเริ่มกะ (เวลาที่น้อยกว่าเวลาเริ่มกะ = วันถัดไป)
+    const SHIFT_CONFIG = {
+        Day:   { start: '08:00', normalEnd: '17:00', otStart: '17:30', end: '20:00', breaks: [['12:00', '13:00'], ['17:00', '17:30']] },
+        Night: { start: '20:00', normalEnd: '05:00', otStart: '05:30', end: '08:00', breaks: [['00:00', '01:00'], ['05:00', '05:30']] }
+    };
+    const DEFAULT_TARGET_KEY = '*DEFAULT*';
+
+    function getWeightPerPc(productStr) {
+        if (!productStr) return 0.003;
+        if (productStr.includes("10A")) return 0.00228;
+        if (productStr.includes("16A")) return 0.00279;
+        if (productStr.includes("20A")) return 0.00357;
+        if (productStr.includes("25/32A")) return 0.005335;
+        return 0.003;
+    }
+
+    // "12.5 kg" / "3000 ชิ้น" → จำนวนชิ้น
+    function qtyToPcs(qtyStr, productStr) {
+        if (!qtyStr && qtyStr !== 0) return 0;
+        const s = String(qtyStr);
+        const val = parseFloat(s);
+        if (isNaN(val) || val <= 0) return 0;
+        return s.toLowerCase().includes('kg') ? Math.round(val / getWeightPerPc(productStr)) : val;
+    }
+
+    // "CWM-01 : S1B29288-JR (10A)" → "S1B29288-JR (10A)"
+    function modelOf(productStr) {
+        const s = String(productStr || '');
+        const idx = s.indexOf(' : ');
+        return (idx > -1 ? s.substring(idx + 3) : s).trim();
+    }
+
+    // "yyyy-MM-dd HH:mm" → นาทีแบบ absolute (ไม่สน timezone — ใช้เทียบกันเท่านั้น)
+    function isoToMin(iso) {
+        const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/);
+        if (!m) return NaN;
+        return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) / 60000;
+    }
+    function hmToMin(hm) { const [h, m] = hm.split(':').map(Number); return h * 60 + m; }
+    function minToIso(min) {
+        const d = new Date(min * 60000);
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+    }
+
+    // เวลาของกะในวันที่ dateIso เป็นนาที absolute
+    function shiftWindow(dateIso, shiftName) {
+        const cfg = SHIFT_CONFIG[shiftName];
+        const day0 = isoToMin(dateIso + ' 00:00');
+        const startTod = hmToMin(cfg.start);
+        const at = hm => { const t = hmToMin(hm); return day0 + t + (t < startTod ? 1440 : 0); };
+        return {
+            start: at(cfg.start),
+            normalEnd: at(cfg.normalEnd),
+            otStart: at(cfg.otStart),
+            end: at(cfg.end) <= at(cfg.start) ? at(cfg.end) + 1440 : at(cfg.end),
+            breaks: cfg.breaks.map(([a, b]) => [at(a), at(b)])
+        };
+    }
+
+    function findTarget(model, targets) {
+        const exact = targets.find(t => t.model === model);
+        if (exact) return exact.pcsPerHour;
+        const def = targets.find(t => t.model === DEFAULT_TARGET_KEY);
+        return def ? def.pcsPerHour : 0;
+    }
+
+    // รวมชิ้นตามรุ่น แล้วแปลงเป็นชั่วโมงตามเป้า
+    function piecesToHours(pcsByModel, targets) {
+        let hours = 0, pcs = 0, missingPcs = 0;
+        const rows = Object.keys(pcsByModel).sort().map(model => {
+            const p = pcsByModel[model];
+            const rate = findTarget(model, targets);
+            const h = rate > 0 ? p / rate : 0;
+            if (rate > 0) { hours += h; pcs += p; } else { missingPcs += p; }
+            return { model, pcs: p, rate, hours: h };
+        });
+        return { rows, hours, pcs, missingPcs };
+    }
+
+    // คำนวณรายงานของ 1 กะ — data = {logs, jobs, targets}
+    function calcShift(dateIso, shiftName, data) {
+        const w = shiftWindow(dateIso, shiftName);
+        const targets = data.targets || [];
+        const logsWithMin = (data.logs || []).map(l => ({ ...l, t: isoToMin(l.sortedAt) })).filter(l => !isNaN(l.t));
+
+        // 1) ชั่วโมงทำงาน
+        const shiftLogs = logsWithMin.filter(l => l.t >= w.start && l.t < w.end);
+        const hasOT = shiftLogs.some(l => l.t >= w.otStart);
+        const countEnd = hasOT ? w.end : w.normalEnd;
+        let workMin = countEnd - w.start;
+        w.breaks.forEach(([a, b]) => { workMin -= Math.max(0, Math.min(b, countEnd) - Math.max(a, w.start)); });
+        const workHours = workMin / 60;
+
+        // 2) งานที่มีให้คัด = ค้างตอนเริ่มกะ + ลงทะเบียนเข้ามาระหว่างกะ (ถึงเวลาที่นับ)
+        const logsByJob = {};
+        logsWithMin.forEach(l => { (logsByJob[l.jobId] = logsByJob[l.jobId] || []).push(l.t); });
+        const backlogByModel = {}, incomingByModel = {};
+        (data.jobs || []).forEach(j => {
+            const reg = isoToMin(j.regAt);
+            if (isNaN(reg)) return;
+            const pcs = qtyToPcs(j.qty, j.product);
+            if (pcs <= 0) return;
+            const model = modelOf(j.product);
+            if (reg < w.start) {
+                const jobLogs = logsByJob[j.jobId] || [];
+                let doneBefore;
+                if (jobLogs.length > 0) {
+                    doneBefore = jobLogs.some(t => t < w.start);
+                } else {
+                    // งานเก่าก่อนเริ่มเก็บ Sort_Log — ใช้เวลาปิดงานล่าสุดแทน
+                    const closed = isoToMin(j.closedAt);
+                    doneBefore = j.status !== 'Pending' && !isNaN(closed) && closed < w.start;
+                }
+                if (!doneBefore) backlogByModel[model] = (backlogByModel[model] || 0) + pcs;
+            } else if (reg < countEnd) {
+                incomingByModel[model] = (incomingByModel[model] || 0) + pcs;
+            }
+        });
+        const availByModel = {};
+        [backlogByModel, incomingByModel].forEach(src => Object.keys(src).forEach(m => { availByModel[m] = (availByModel[m] || 0) + src[m]; }));
+        const avail = piecesToHours(availByModel, targets);
+        const backlog = piecesToHours(backlogByModel, targets);
+        const incoming = piecesToHours(incomingByModel, targets);
+
+        // 3) ยอดที่คัดได้ในกะ (แยกรุ่น + แยกผู้คัด)
+        const sortedByModel = {}, bySorter = {};
+        shiftLogs.forEach(l => {
+            const pcs = qtyToPcs(l.fgSorted, l.product) + qtyToPcs(l.ngSorted, l.product);
+            const model = modelOf(l.product);
+            sortedByModel[model] = (sortedByModel[model] || 0) + pcs;
+            const name = l.sorter || '-';
+            bySorter[name] = bySorter[name] || { pcsByModel: {}, count: 0 };
+            bySorter[name].pcsByModel[model] = (bySorter[name].pcsByModel[model] || 0) + pcs;
+            bySorter[name].count += 1;
+        });
+        const sorted = piecesToHours(sortedByModel, targets);
+        const sorters = Object.keys(bySorter).sort().map(name => {
+            const h = piecesToHours(bySorter[name].pcsByModel, targets);
+            return { name, submissions: bySorter[name].count, pcs: h.pcs + h.missingPcs, hours: h.hours };
+        });
+
+        // 4) เป้าของกะ + ผลงาน
+        const targetHours = Math.min(workHours, avail.hours);
+        const basis = avail.hours < workHours ? 'ตามงานที่มีให้คัด' : 'ตามกำลังคน';
+        const perf = targetHours > 0 ? sorted.hours / targetHours : null;
+        const sortedPcsAll = sorted.pcs + sorted.missingPcs;
+        const pcsPerWorkHour = workHours > 0 ? sortedPcsAll / workHours : 0;
+        let targetPcs = 0;
+        if (sorted.hours > 0) targetPcs = targetHours * sorted.pcs / sorted.hours;
+        else if (avail.hours > 0) targetPcs = targetHours * avail.pcs / avail.hours;
+
+        return {
+            date: dateIso, shift: shiftName,
+            windowStart: minToIso(w.start), countEnd: minToIso(countEnd),
+            hasOT, workHours,
+            avail, backlog, incoming, sorted, sorters,
+            targetHours, basis, perf, pcsPerWorkHour, targetPcs,
+            hasActivity: shiftLogs.length > 0
+        };
+    }
+
+    function listDates(startIso, endIso) {
+        const out = [];
+        for (let m = isoToMin(startIso); m <= isoToMin(endIso); m += 1440) out.push(minToIso(m).substring(0, 10));
+        return out;
+    }
+// @@CALC-END
+
+    // ==========================================
+    // UI
+    // ==========================================
+    window.onload = () => {
+        const savedUser = localStorage.getItem('CWM_AUTH_USER');
+        if (!savedUser) {
+            alert("กรุณาเข้าสู่ระบบผ่านหน้าหลักก่อนใช้งาน");
+            window.location.href = 'index.html';
+            return;
+        }
+        currentUser = JSON.parse(savedUser);
+        if (!['Admin', 'Production', 'QC'].includes(currentUser.role)) {
+            alert(`คุณ (${currentUser.role}) ไม่มีสิทธิ์เข้าถึงหน้านี้`);
+            window.location.href = 'index.html';
+            return;
+        }
+        document.getElementById('user-info').innerHTML = `ผู้ใช้งาน: <span class="font-bold text-blue-200">${currentUser.name}</span> (${currentUser.role})`;
+
+        const isAdmin = currentUser.role === 'Admin';
+        document.getElementById('target-actions').classList.toggle('hidden', !isAdmin);
+        document.getElementById('target-readonly-note').classList.toggle('hidden', isAdmin);
+
+        const today = new Date();
+        const iso = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().substring(0, 10);
+        document.getElementById('f-start').value = iso;
+        document.getElementById('f-end').value = iso;
+
+        renderShiftHelp();
+        loadReport();
+    };
+
+    function switchTab(tab) {
+        ['report', 'target', 'help'].forEach(t => {
+            document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+            const btn = document.getElementById('tab-btn-' + t);
+            btn.classList.toggle('border-purple-600', t === tab);
+            btn.classList.toggle('text-purple-700', t === tab);
+            btn.classList.toggle('border-transparent', t !== tab);
+            btn.classList.toggle('text-gray-500', t !== tab);
+        });
+    }
+
+    function renderShiftHelp() {
+        let html = '<table class="text-xs border mt-2"><thead class="bg-gray-100"><tr><th class="p-2 border">กะ</th><th class="p-2 border">เริ่ม</th><th class="p-2 border">เลิกปกติ</th><th class="p-2 border">เริ่ม OT</th><th class="p-2 border">สิ้นกะ</th><th class="p-2 border">พัก</th></tr></thead><tbody>';
+        Object.keys(SHIFT_CONFIG).forEach(k => {
+            const c = SHIFT_CONFIG[k];
+            html += `<tr><td class="p-2 border font-bold">${k}</td><td class="p-2 border">${c.start}</td><td class="p-2 border">${c.normalEnd}</td><td class="p-2 border">${c.otStart}</td><td class="p-2 border">${c.end}</td><td class="p-2 border">${c.breaks.map(b => b.join('–')).join(', ')}</td></tr>`;
+        });
+        document.getElementById('help-shifts').innerHTML = html + '</tbody></table>';
+    }
+
+    const fmt = (n, d = 0) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    const fmtH = h => fmt(h, 2) + ' ชม.';
+    function perfBadge(perf) {
+        if (perf === null) return '<span class="text-gray-400">-</span>';
+        const pct = perf * 100;
+        const cls = pct >= 100 ? 'bg-green-100 text-green-800' : pct >= 85 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+        return `<span class="px-2 py-0.5 rounded font-bold ${cls}">${fmt(pct, 0)}%</span>`;
+    }
+
+    async function postJson(payload) {
+        const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
+        return res.json();
+    }
+
+    async function loadReport() {
+        const start = document.getElementById('f-start').value;
+        const end = document.getElementById('f-end').value;
+        const shiftFilter = document.getElementById('f-shift').value;
+        if (!start || !end || start > end) { alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง'); return; }
+
+        const body = document.getElementById('report-body');
+        const warn = document.getElementById('report-warning');
+        const btn = document.getElementById('btn-load');
+        btn.disabled = true; btn.innerText = '⏳ กำลังโหลด...';
+        body.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-gray-400">⏳ กำลังโหลดข้อมูล...</td></tr>';
+        document.getElementById('report-detail').classList.add('hidden');
+        warn.classList.add('hidden');
+
+        let data;
+        try {
+            data = await postJson({ action: 'GET_SORT_EVAL_DATA', start, end });
+        } catch (err) {
+            console.error(err);
+            data = null;
+        }
+        btn.disabled = false; btn.innerText = '🔍 แสดงรายงาน';
+
+        if (!data || data.status !== 'success' || !Array.isArray(data.logs)) {
+            body.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-red-500">โหลดข้อมูลไม่สำเร็จ — backend อาจยังไม่ได้อัปเดตให้รองรับรายงานนี้ (GET_SORT_EVAL_DATA)</td></tr>';
+            return;
+        }
+
+        sortTargets = data.targets || [];
+        renderTargets();
+
+        const warnings = [];
+        if (sortTargets.length === 0) warnings.push('ยังไม่ได้ตั้งเป้าสินค้า — ไปที่แท็บ "🎯 เป้าสินค้า" เพื่อตั้งเป้าก่อน');
+        if (!data.firstLogAt) warnings.push('ยังไม่มีข้อมูลใน Sort_Log (ระบบจะเริ่มเก็บเมื่อผู้คัดกด "ส่งให้ QC ตรวจ" หลังอัปเดต backend)');
+        else if (start + ' 08:00' < data.firstLogAt) warnings.push(`เริ่มเก็บ Sort_Log ตั้งแต่ ${data.firstLogAt} — กะก่อนหน้านั้นข้อมูลไม่ครบ`);
+
+        const shifts = shiftFilter ? [shiftFilter] : Object.keys(SHIFT_CONFIG);
+        lastReport = [];
+        let html = '';
+        listDates(start, end).forEach(dateIso => {
+            const dayRows = shifts.map(s => calcShift(dateIso, s, data));
+            dayRows.forEach(r => {
+                const idx = lastReport.push(r) - 1;
+                const missing = r.avail.missingPcs + r.sorted.missingPcs;
+                html += `<tr class="border-t hover:bg-purple-50 cursor-pointer ${r.hasActivity ? '' : 'text-gray-400'}" onclick="showDetail(${idx})">
+                    <td class="p-3 whitespace-nowrap">${dateIso}</td>
+                    <td class="p-3 whitespace-nowrap font-bold">${r.shift} ${r.hasOT ? '<span class="ml-1 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">OT</span>' : ''}</td>
+                    <td class="p-3 text-right num">${fmtH(r.workHours)}</td>
+                    <td class="p-3 text-right num">${fmtH(r.avail.hours)}<div class="text-[11px] text-gray-500">${fmt(r.avail.pcs)} ชิ้น</div></td>
+                    <td class="p-3 text-right num font-bold">${fmtH(r.targetHours)}<div class="text-[11px] font-normal text-gray-500">${r.basis}</div></td>
+                    <td class="p-3 text-right num">${fmtH(r.sorted.hours)}<div class="text-[11px] text-gray-500">${fmt(r.sorted.pcs + r.sorted.missingPcs)} ชิ้น</div></td>
+                    <td class="p-3 text-right">${r.hasActivity ? perfBadge(r.perf) : '<span class="text-[11px]">ไม่มีการบันทึกยอด</span>'}${missing > 0 ? '<div class="text-[10px] text-orange-600">⚠ มีรุ่นที่ยังไม่ตั้งเป้า</div>' : ''}</td>
+                    <td class="p-3 text-right num">${fmt(r.pcsPerWorkHour)}</td>
+                    <td class="p-3 text-right num">≈ ${fmt(r.targetPcs)}</td>
+                </tr>`;
+            });
+            // สรุปรายวัน (รวมเฉพาะกะที่มีการบันทึกยอด)
+            const active = dayRows.filter(r => r.hasActivity);
+            if (shifts.length > 1 && active.length > 0) {
+                const sumT = active.reduce((a, r) => a + r.targetHours, 0);
+                const sumS = active.reduce((a, r) => a + r.sorted.hours, 0);
+                const sumW = active.reduce((a, r) => a + r.workHours, 0);
+                const sumPcs = active.reduce((a, r) => a + r.sorted.pcs + r.sorted.missingPcs, 0);
+                const sumTP = active.reduce((a, r) => a + r.targetPcs, 0);
+                html += `<tr class="bg-gray-50 border-t font-bold">
+                    <td class="p-3" colspan="2">รวมวัน ${dateIso}</td>
+                    <td class="p-3 text-right num">${fmtH(sumW)}</td>
+                    <td class="p-3"></td>
+                    <td class="p-3 text-right num">${fmtH(sumT)}</td>
+                    <td class="p-3 text-right num">${fmtH(sumS)}<div class="text-[11px] font-normal text-gray-500">${fmt(sumPcs)} ชิ้น</div></td>
+                    <td class="p-3 text-right">${perfBadge(sumT > 0 ? sumS / sumT : null)}</td>
+                    <td class="p-3 text-right num">${fmt(sumW > 0 ? sumPcs / sumW : 0)}</td>
+                    <td class="p-3 text-right num">≈ ${fmt(sumTP)}</td>
+                </tr>`;
+            }
+        });
+        body.innerHTML = html || '<tr><td colspan="9" class="p-6 text-center text-gray-400">ไม่มีข้อมูล</td></tr>';
+
+        if (warnings.length) {
+            warn.innerHTML = warnings.map(w => '⚠️ ' + w).join('<br>');
+            warn.classList.remove('hidden');
+        }
+    }
+
+    function modelTable(title, h) {
+        if (h.rows.length === 0) return `<div><h4 class="font-bold text-gray-700 mb-1">${title}</h4><p class="text-xs text-gray-400">ไม่มี</p></div>`;
+        return `<div><h4 class="font-bold text-gray-700 mb-1">${title}</h4>
+            <table class="w-full text-xs"><thead class="bg-gray-100"><tr><th class="p-2 text-left">รุ่น</th><th class="p-2 text-right">ชิ้น</th><th class="p-2 text-right">เป้า ชิ้น/ชม.</th><th class="p-2 text-right">ชม.ตามเป้า</th></tr></thead><tbody>
+            ${h.rows.map(r => `<tr class="border-t"><td class="p-2">${r.model}</td><td class="p-2 text-right num">${fmt(r.pcs)}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.rate) : '<span class="text-orange-600">ยังไม่ตั้งเป้า</span>'}</td><td class="p-2 text-right num">${r.rate > 0 ? fmt(r.hours, 2) : '-'}</td></tr>`).join('')}
+            <tr class="border-t font-bold"><td class="p-2">รวม</td><td class="p-2 text-right num">${fmt(h.pcs + h.missingPcs)}</td><td></td><td class="p-2 text-right num">${fmt(h.hours, 2)}</td></tr>
+            </tbody></table></div>`;
+    }
+
+    function showDetail(idx) {
+        const r = lastReport[idx];
+        const el = document.getElementById('report-detail');
+        el.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-gray-800">รายละเอียด ${r.date} กะ ${r.shift}</h3>
+                <button onclick="document.getElementById('report-detail').classList.add('hidden')" class="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">นับเวลา ${r.windowStart} – ${r.countEnd} ${r.hasOT ? '(มีบันทึกยอดช่วง OT → นับถึงสิ้นกะ)' : '(ไม่มี OT)'} · ชั่วโมงทำงาน <b>${fmtH(r.workHours)}</b>
+                · เป้าของกะ = min(${fmt(r.workHours, 2)}, ${fmt(r.avail.hours, 2)}) = <b>${fmtH(r.targetHours)}</b> (${r.basis})
+                · ผลงาน = ${fmt(r.sorted.hours, 2)} ÷ ${fmt(r.targetHours, 2)} = <b>${r.perf === null ? '-' : fmt(r.perf * 100, 0) + '%'}</b></p>
+            <div class="grid md:grid-cols-3 gap-4">
+                ${modelTable('ค้างตอนเริ่มกะ', r.backlog)}
+                ${modelTable('ลงทะเบียนเข้ามาระหว่างกะ', r.incoming)}
+                ${modelTable('คัดได้ในกะ', r.sorted)}
+            </div>
+            <div class="mt-4">
+                <h4 class="font-bold text-gray-700 mb-1">ยอดรายคน (ดูประกอบ ไม่ได้ใช้ตัดสินผลงานกะ)</h4>
+                ${r.sorters.length === 0 ? '<p class="text-xs text-gray-400">ไม่มีการส่งยอดในกะนี้</p>' : `
+                <table class="w-full text-xs"><thead class="bg-gray-100"><tr><th class="p-2 text-left">ผู้คัด</th><th class="p-2 text-right">ครั้งที่ส่งยอด</th><th class="p-2 text-right">ชิ้น</th><th class="p-2 text-right">ชม.ตามเป้า</th></tr></thead><tbody>
+                ${r.sorters.map(s => `<tr class="border-t"><td class="p-2">${s.name}</td><td class="p-2 text-right num">${s.submissions}</td><td class="p-2 text-right num">${fmt(s.pcs)}</td><td class="p-2 text-right num">${fmt(s.hours, 2)}</td></tr>`).join('')}
+                </tbody></table>`}
+            </div>`;
+        el.classList.remove('hidden');
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ==========================================
+    // เป้าสินค้า
+    // ==========================================
+    function renderTargets() {
+        const isAdmin = currentUser.role === 'Admin';
+        const body = document.getElementById('target-body');
+        const rows = sortTargets.length ? sortTargets : [];
+        body.innerHTML = rows.map(t => targetRowHtml(t.model, t.pcsPerHour, isAdmin)).join('')
+            || '<tr class="empty-row"><td colspan="3" class="p-4 text-center text-gray-400">ยังไม่มีการตั้งเป้า</td></tr>';
+    }
+
+    function targetRowHtml(model, rate, editable) {
+        const esc = v => String(v ?? '').replace(/"/g, '&quot;');
+        if (!editable) return `<tr class="border-t"><td class="p-2">${model}</td><td class="p-2 text-right num">${fmt(rate)}</td><td></td></tr>`;
+        return `<tr class="border-t target-row">
+            <td class="p-2"><input list="model-list" class="t-model w-full p-2 border rounded" value="${esc(model)}" placeholder="ชื่อรุ่น เช่น S1B29288-JR (10A)"></td>
+            <td class="p-2"><input type="number" min="1" class="t-rate w-full p-2 border rounded text-right" value="${esc(rate)}" placeholder="ชิ้น/ชม."></td>
+            <td class="p-2 text-center"><button onclick="this.closest('tr').remove()" class="text-red-500 hover:text-red-700">🗑</button></td>
+        </tr>`;
+    }
+
+    function addTargetRow() {
+        const body = document.getElementById('target-body');
+        const empty = body.querySelector('.empty-row');
+        if (empty) empty.remove();
+        body.insertAdjacentHTML('beforeend', targetRowHtml('', '', true));
+    }
+
+    async function saveTargets() {
+        const items = Array.from(document.querySelectorAll('#target-body .target-row')).map(tr => ({
+            model: tr.querySelector('.t-model').value.trim(),
+            pcsPerHour: parseFloat(tr.querySelector('.t-rate').value)
+        }));
+        const bad = items.find(i => !i.model || !(i.pcsPerHour > 0));
+        if (bad) { alert('กรุณากรอกชื่อรุ่นและเป้า (มากกว่า 0) ให้ครบทุกแถว'); return; }
+        const names = items.map(i => i.model);
+        if (new Set(names).size !== names.length) { alert('มีชื่อรุ่นซ้ำกัน'); return; }
+
+        const btn = document.getElementById('btn-save-target');
+        btn.disabled = true; btn.innerText = '⏳ กำลังบันทึก...';
+        try {
+            const result = await postJson({ action: 'SAVE_SORT_TARGETS', items, role: currentUser.role, updatedBy: currentUser.name || currentUser.username });
+            if (result.status === 'success') {
+                sortTargets = items;
+                renderTargets();
+                alert('บันทึกเป้าเรียบร้อย');
+            } else {
+                alert('❌ บันทึกไม่สำเร็จ: ' + (result.message || 'backend อาจยังไม่รองรับ'));
+            }
+        } catch (err) {
+            alert('❌ บันทึกไม่สำเร็จ: ' + err);
+        }
+        btn.disabled = false; btn.innerText = '💾 บันทึกเป้า';
+    }
+</script>
+</body>
+</html>
