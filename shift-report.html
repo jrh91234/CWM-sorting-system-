@@ -9,6 +9,35 @@
     <style>
         body { font-family: 'Sarabun', sans-serif; }
         .num { font-variant-numeric: tabular-nums; }
+
+        /* ===== เอกสารพิมพ์ / บันทึก PDF (A4 แนวตั้ง 1–2 หน้า) ===== */
+        #print-report { display: none; }
+        @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body { background: #fff !important; }
+            body > nav, body > main { display: none !important; }
+            #print-report { display: block; color: #111; font-size: 10.5px; line-height: 1.35; }
+            #print-report * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+        .pr-head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1e40af; padding-bottom: 4px; margin-bottom: 8px; }
+        .pr-head h1 { font-size: 16px; font-weight: 700; color: #1e3a8a; margin: 0; }
+        .pr-head .meta { text-align: right; font-size: 10px; color: #444; }
+        .pr-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+        .pr-kpi { border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 6px; }
+        .pr-kpi .lbl { font-size: 9px; color: #555; }
+        .pr-kpi .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .pr-sec { font-size: 11.5px; font-weight: 700; color: #1e3a8a; margin: 8px 0 3px; }
+        .pr-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; break-inside: auto; }
+        .pr-table th, .pr-table td { border: 1px solid #cbd5e1; padding: 2px 4px; }
+        .pr-table th { background: #e2e8f0; font-weight: 700; font-size: 9.5px; }
+        .pr-table td.r, .pr-table th.r { text-align: right; }
+        .pr-table tr { break-inside: avoid; }
+        .pr-table tr.total td { background: #f1f5f9; font-weight: 700; }
+        .pr-good { color: #166534; font-weight: 700; } .pr-mid { color: #854d0e; font-weight: 700; } .pr-bad { color: #991b1b; font-weight: 700; }
+        .pr-two { display: grid; grid-template-columns: 3fr 2fr; gap: 8px; }
+        .pr-note { font-size: 9px; color: #555; margin-top: 6px; }
+        .pr-sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; text-align: center; font-size: 10px; break-inside: avoid; }
+        .pr-sign div { border-top: 1px solid #333; padding-top: 3px; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -60,6 +89,7 @@
                     </select>
                 </div>
                 <button onclick="loadReport()" id="btn-load" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg">🔍 แสดงรายงาน</button>
+                <button onclick="printShiftReport()" id="btn-print" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg">🖨️ พิมพ์ / บันทึก PDF</button>
                 <p class="text-xs text-gray-500 ml-auto">กะ Night ของวันที่ X = 20:00 วันที่ X ถึง 08:00 วันถัดไป</p>
             </div>
 
@@ -141,11 +171,15 @@
         </section>
     </main>
 
+    <!-- เอกสารสำหรับพิมพ์ / บันทึก PDF — สร้างจากรายงานที่แสดงอยู่ล่าสุด -->
+    <div id="print-report"></div>
+
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyt3Bf_2h21BBcCHQSjizowy_kD5vsoUqgaC_YmVjLuQybJO1BBRt3eaSM0PuKEFfvruw/exec";
     let currentUser = null;
     let sortTargets = [];   // [{model, pcsPerHour}]
     let lastReport = [];    // ผลคำนวณล่าสุด (ไว้เปิดดูรายละเอียด)
+    let lastReportMeta = null; // {start, end, shiftFilter, warnings} ของรายงานล่าสุด (ใช้ตอนพิมพ์)
 
 // @@CALC-START — ส่วนคำนวณ (ไม่แตะ DOM)
     // ตารางกะ — เวลาเป็น "HH:mm" ของวันเริ่มกะ (เวลาที่น้อยกว่าเวลาเริ่มกะ = วันถัดไป)
@@ -512,11 +546,127 @@
             }
         });
         body.innerHTML = html || '<tr><td colspan="9" class="p-6 text-center text-gray-400">ไม่มีข้อมูล</td></tr>';
+        lastReportMeta = { start, end, shiftFilter, warnings };
 
         if (warnings.length) {
             warn.innerHTML = warnings.map(w => '⚠️ ' + w).join('<br>');
             warn.classList.remove('hidden');
         }
+    }
+
+    // ==========================================
+    // พิมพ์ / บันทึก PDF (แบบเดียวกับรายงานฝั่ง PD: ใช้หน้าต่างพิมพ์ของเบราว์เซอร์ → "บันทึกเป็น PDF")
+    // ==========================================
+    function printShiftReport() {
+        if (!lastReportMeta || lastReport.length === 0) { alert('กรุณากด "แสดงรายงาน" ก่อนพิมพ์'); return; }
+        const { start, end, shiftFilter, warnings } = lastReportMeta;
+        const active = lastReport.filter(r => r.hasActivity);
+        const pctCls = p => p === null ? '' : p >= 1 ? 'pr-good' : p >= 0.85 ? 'pr-mid' : 'pr-bad';
+        const pctTxt = p => p === null ? '-' : fmt(p * 100, 0) + '%';
+
+        const sumT = active.reduce((a, r) => a + r.targetHours, 0);
+        const sumS = active.reduce((a, r) => a + r.sorted.hours, 0);
+        const sumW = active.reduce((a, r) => a + r.workHours, 0);
+        const sumPcs = active.reduce((a, r) => a + r.sorted.pcs + r.sorted.missingPcs, 0);
+        const overall = sumT > 0 ? sumS / sumT : null;
+
+        // ตารางรายกะ — ช่วงยาวเกิน 7 วัน สรุปเป็นรายวันเพื่อให้อยู่ใน 1–2 หน้า
+        const days = [...new Set(lastReport.map(r => r.date))];
+        const byDay = days.length > 7;
+        let rows = '';
+        if (!byDay) {
+            lastReport.forEach(r => {
+                rows += `<tr><td>${r.date}</td><td>${r.shift}${r.hasOT ? ' (OT)' : ''}</td>
+                    <td class="r">${fmt(r.workHours, 1)}</td><td class="r">${fmt(r.avail.hours, 1)}</td>
+                    <td class="r">${fmt(r.targetHours, 1)}<br><span style="font-size:8.5px;color:#555">${r.basis}</span></td>
+                    <td class="r">${fmt(r.sorted.hours, 1)}</td><td class="r">${fmt(r.sorted.pcs + r.sorted.missingPcs)}</td>
+                    <td class="r ${pctCls(r.hasActivity ? r.perf : null)}">${r.hasActivity ? pctTxt(r.perf) : 'ไม่มีบันทึก'}</td>
+                    <td class="r">${fmt(r.pcsPerWorkHour)}</td></tr>`;
+            });
+        } else {
+            days.forEach(d => {
+                const a = lastReport.filter(r => r.date === d && r.hasActivity);
+                const t = a.reduce((x, r) => x + r.targetHours, 0), sh = a.reduce((x, r) => x + r.sorted.hours, 0);
+                const w = a.reduce((x, r) => x + r.workHours, 0), pc = a.reduce((x, r) => x + r.sorted.pcs + r.sorted.missingPcs, 0);
+                const av = a.reduce((x, r) => x + r.avail.hours, 0);
+                const p = t > 0 ? sh / t : null;
+                rows += `<tr><td>${d}</td><td>${a.map(r => r.shift + (r.hasOT ? '(OT)' : '')).join(', ') || '-'}</td>
+                    <td class="r">${fmt(w, 1)}</td><td class="r">${fmt(av, 1)}</td><td class="r">${fmt(t, 1)}</td><td class="r">${fmt(sh, 1)}</td>
+                    <td class="r">${fmt(pc)}</td><td class="r ${pctCls(a.length ? p : null)}">${a.length ? pctTxt(p) : 'ไม่มีบันทึก'}</td>
+                    <td class="r">${fmt(w > 0 ? pc / w : 0)}</td></tr>`;
+            });
+        }
+        rows += `<tr class="total"><td colspan="2">รวม (เฉพาะกะที่มีบันทึก ${active.length} กะ)</td><td class="r">${fmt(sumW, 1)}</td><td></td>
+            <td class="r">${fmt(sumT, 1)}</td><td class="r">${fmt(sumS, 1)}</td><td class="r">${fmt(sumPcs)}</td>
+            <td class="r ${pctCls(overall)}">${pctTxt(overall)}</td><td class="r">${fmt(sumW > 0 ? sumPcs / sumW : 0)}</td></tr>`;
+
+        // สรุปตามเคส (รุ่น × อาการ NG) และรายคน — รวมทั้งช่วง
+        const cases = {}, people = {};
+        active.forEach(r => {
+            r.sorted.rows.forEach(c => {
+                const k = c.model + KEY_SEP + (c.symptom || '');
+                cases[k] = cases[k] || { model: c.model, symptom: c.symptom, pcs: 0, hours: 0, rate: c.rate };
+                cases[k].pcs += c.pcs; cases[k].hours += c.hours;
+            });
+            r.sorters.forEach(sr => {
+                people[sr.name] = people[sr.name] || { name: sr.name, pcs: 0, hours: 0, n: 0 };
+                people[sr.name].pcs += sr.pcs; people[sr.name].hours += sr.hours; people[sr.name].n += sr.submissions;
+            });
+        });
+        const topN = (list, n, key) => {
+            const sorted = list.sort((a, b) => b[key] - a[key]);
+            return { shown: sorted.slice(0, n), rest: sorted.slice(n) };
+        };
+        const cs = topN(Object.values(cases), 12, 'pcs');
+        let caseRows = cs.shown.map(c => `<tr><td>${c.model}<br><span style="font-size:8.5px;color:#555">${c.symptom || '-'}</span></td>
+            <td class="r">${fmt(c.pcs)}</td><td class="r">${c.rate > 0 ? fmt(c.rate) : 'ยังไม่ตั้งเป้า'}</td><td class="r">${c.rate > 0 ? fmt(c.hours, 1) : '-'}</td></tr>`).join('');
+        if (cs.rest.length) caseRows += `<tr><td>อื่นๆ (${cs.rest.length} เคส)</td><td class="r">${fmt(cs.rest.reduce((a, c) => a + c.pcs, 0))}</td><td></td><td class="r">${fmt(cs.rest.reduce((a, c) => a + c.hours, 0), 1)}</td></tr>`;
+        const ps = topN(Object.values(people), 12, 'hours');
+        let peopleRows = ps.shown.map(x => `<tr><td>${x.name}</td><td class="r">${x.n}</td><td class="r">${fmt(x.pcs)}</td><td class="r">${fmt(x.hours, 1)}</td></tr>`).join('');
+        if (ps.rest.length) peopleRows += `<tr><td>อื่นๆ (${ps.rest.length} คน)</td><td></td><td class="r">${fmt(ps.rest.reduce((a, x) => a + x.pcs, 0))}</td><td class="r">${fmt(ps.rest.reduce((a, x) => a + x.hours, 0), 1)}</td></tr>`;
+
+        const period = start === end ? start : `${start} ถึง ${end}`;
+        const now = new Date();
+        const p2 = n => String(n).padStart(2, '0');
+        const printedAt = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
+
+        document.getElementById('print-report').innerHTML = `
+            <div class="pr-head">
+                <div><h1>CWM SORTING — รายงานประเมินผลงานคัดรายกะ</h1>
+                    <div>ช่วงวันที่ <b>${period}</b> · กะ <b>${shiftFilter || 'ทั้งหมด (Day + Night)'}</b></div></div>
+                <div class="meta">พิมพ์โดย ${currentUser.name || currentUser.username || '-'}<br>${printedAt}</div>
+            </div>
+            <div class="pr-kpis">
+                <div class="pr-kpi"><div class="lbl">ผลงานเทียบเป้า (รวม)</div><div class="val ${pctCls(overall)}">${pctTxt(overall)}</div></div>
+                <div class="pr-kpi"><div class="lbl">ชม.ที่คัดได้ / เป้า</div><div class="val">${fmt(sumS, 1)} / ${fmt(sumT, 1)}</div></div>
+                <div class="pr-kpi"><div class="lbl">ชิ้นที่คัดได้</div><div class="val">${fmt(sumPcs)}</div></div>
+                <div class="pr-kpi"><div class="lbl">ชิ้น/ชม.ทำงาน</div><div class="val">${fmt(sumW > 0 ? sumPcs / sumW : 0)}</div></div>
+            </div>
+            <div class="pr-sec">${byDay ? 'สรุปรายวัน' : 'สรุปรายกะ'}</div>
+            <table class="pr-table"><thead><tr>
+                <th>วันที่</th><th>กะ</th><th class="r">ชม.ทำงาน</th><th class="r">งานที่มีให้คัด (ชม.)</th><th class="r">เป้าของกะ (ชม.)</th>
+                <th class="r">คัดได้ (ชม.)</th><th class="r">คัดได้ (ชิ้น)</th><th class="r">ผลงาน</th><th class="r">ชิ้น/ชม.</th>
+            </tr></thead><tbody>${rows}</tbody></table>
+            <div class="pr-two">
+                <div><div class="pr-sec">งานที่คัดได้ตามเคส (รุ่น × อาการ NG)</div>
+                    <table class="pr-table"><thead><tr><th>รุ่น / อาการ</th><th class="r">ชิ้น</th><th class="r">เป้า ชิ้น/ชม.</th><th class="r">ชม.ตามเป้า</th></tr></thead>
+                    <tbody>${caseRows || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>
+                <div><div class="pr-sec">ยอดรายคน (ดูประกอบ)</div>
+                    <table class="pr-table"><thead><tr><th>ผู้คัด</th><th class="r">ส่งยอด</th><th class="r">ชิ้น</th><th class="r">ชม.ตามเป้า</th></tr></thead>
+                    <tbody>${peopleRows || '<tr><td colspan="4">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>
+            </div>
+            ${warnings.length ? `<div class="pr-note">⚠ ${warnings.join(' · ')}</div>` : ''}
+            <div class="pr-note">วิธีคิด: เป้าของกะ = ค่าที่น้อยกว่าระหว่าง ชั่วโมงทำงาน (เวลากะ − เวลาพัก; มีบันทึกยอดช่วง OT นับถึงสิ้นกะ) กับ งานที่มีให้คัดคิดเป็นชั่วโมงตามเป้าของแต่ละเคส ·
+                ผลงาน = ชั่วโมงที่คัดได้ตามเป้า ÷ เป้าของกะ · สี: เขียว ≥ 100%, เหลือง 85–99%, แดง &lt; 85%</div>
+            <div class="pr-sign"><div>ผู้จัดทำ</div><div>หัวหน้างาน</div><div>ผู้อนุมัติ</div></div>`;
+
+        const originalTitle = document.title;
+        document.title = `CWM_Sort_Shift_Report_${period.replace(/ ถึง /, '_to_')}${shiftFilter ? '_' + shiftFilter : ''}`;
+        window.scrollTo(0, 0);
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => { document.title = originalTitle; }, 1000);
+        }, 300);
     }
 
     function modelTable(title, h) {
