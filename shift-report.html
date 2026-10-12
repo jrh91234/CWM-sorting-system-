@@ -69,6 +69,7 @@
         <div class="flex gap-2 border-b border-gray-300">
             <button id="tab-btn-report" onclick="switchTab('report')" class="px-4 py-2 font-bold border-b-2 border-purple-600 text-purple-700">📊 รายงานกะ</button>
             <button id="tab-btn-target" onclick="switchTab('target')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">🎯 เป้ารุ่น × อาการ NG</button>
+            <button id="tab-btn-stats" onclick="switchTab('stats')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">📈 สถิติรุ่น × อาการ</button>
             <button id="tab-btn-help" onclick="switchTab('help')" class="px-4 py-2 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">ℹ️ วิธีคิด</button>
         </div>
 
@@ -142,6 +143,53 @@
                     <tbody id="target-body"></tbody>
                 </table>
                 <p id="target-readonly-note" class="hidden text-xs text-gray-500">เฉพาะ Admin เท่านั้นที่แก้ไขเป้าได้</p>
+            </div>
+        </section>
+
+        <!-- ===== สถิติการคัด รุ่น × อาการ ===== -->
+        <section id="tab-stats" class="hidden space-y-4">
+            <div class="bg-white rounded-xl shadow p-4 flex flex-wrap items-end gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ตั้งแต่วันที่</label>
+                    <input type="date" id="s-start" class="p-2 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">ถึงวันที่</label>
+                    <input type="date" id="s-end" class="p-2 border rounded-lg">
+                </div>
+                <button onclick="loadStats()" id="btn-stats" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-lg">🔍 คำนวณสถิติ</button>
+                <button onclick="exportStatsCsv()" class="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-lg">📊 Excel (CSV)</button>
+                <p class="text-xs text-gray-500 ml-auto">ค่าเริ่มต้น = ย้อนหลัง 30 วัน</p>
+            </div>
+
+            <div id="stats-warning" class="hidden bg-yellow-50 border border-yellow-300 text-yellow-800 text-sm rounded-lg p-3"></div>
+
+            <div class="bg-white rounded-xl shadow overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 text-gray-700 text-xs">
+                        <tr>
+                            <th class="p-3 text-left">รุ่น / อาการ NG</th>
+                            <th class="p-3 text-right">คัดได้ทั้งหมด (ชิ้น)</th>
+                            <th class="p-3 text-right">ครั้งที่ใช้คิด</th>
+                            <th class="p-3 text-right">ชิ้นที่ใช้คิด</th>
+                            <th class="p-3 text-right">ชม.ที่ใช้คิด</th>
+                            <th class="p-3 text-right">เฉลี่ย ชิ้น/ชม.</th>
+                            <th class="p-3 text-right">ค่ากลาง ชิ้น/ชม.</th>
+                            <th class="p-3 text-right">เป้าปัจจุบัน</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stats-body">
+                        <tr><td colspan="8" class="p-6 text-center text-gray-400">เลือกช่วงวันที่แล้วกด "คำนวณสถิติ"</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="bg-white rounded-xl shadow p-4 text-xs text-gray-600 space-y-1 leading-relaxed">
+                <p class="font-bold text-gray-800 text-sm">วิธีคิดสถิติ</p>
+                <p>• เวลาที่ใช้คัดแต่ละครั้ง = เวลาตั้งแต่ผู้คัดคนนั้นส่งยอดครั้งก่อน (หรือตั้งแต่เริ่มกะ ถ้าเป็นครั้งแรกของกะ) ถึงเวลาที่ส่งยอดครั้งนี้ หักเวลาพักตามตารางกะ</p>
+                <p>• <b>เฉลี่ย ชิ้น/ชม.</b> = ชิ้นที่ใช้คิดรวม ÷ ชม.ที่ใช้คิดรวม · <b>ค่ากลาง</b> = ค่ากลาง (median) ของ ชิ้น/ชม. แต่ละครั้ง — ไม่ถูกดึงด้วยครั้งที่ผิดปกติ ถ้าสองค่าต่างกันมาก ให้เชื่อค่ากลางมากกว่า</p>
+                <p>• ไม่นำมาคิด: งานที่ QC ตีกลับ/Recall (ยอดกับเวลาไม่ตรงกัน), การส่งหลายงานคนละเคสพร้อมกัน (แยกเวลาไม่ได้ว่าใช้กับเคสไหน)</p>
+                <p>• ข้อควรระวัง: ถ้ามีช่วงว่างงานรอของ หรือคนหนึ่งกดส่งยอดแทนหลายคน ตัวเลขจะคลาดได้ — ให้ผู้คัดส่งยอดทีละงานเมื่อคัดเสร็จ และส่งในชื่อตัวเอง สถิติจะแม่นขึ้น · เคสที่ใช้คิดน้อยกว่า 5 ครั้ง ยังไม่ควรใช้ตั้งเป้า</p>
             </div>
         </section>
 
@@ -376,6 +424,74 @@
         };
     }
 
+    // สถิติ ชิ้น/ชม. ของแต่ละเคส (รุ่น × อาการ NG) จาก Sort_Log
+    // แต่ละครั้งที่ส่งยอด: เวลาที่ใช้ = ตั้งแต่ผู้คัดคนนั้นส่งยอดครั้งก่อน (หรือเริ่มกะ) ถึงครั้งนี้ หักเวลาพัก
+    // ส่งหลายงานติดกัน (ห่างไม่เกิน STATS_BATCH_GAP_MIN นาที) ถือเป็นครั้งเดียว
+    const STATS_BATCH_GAP_MIN = 2;
+    function calcCaseStats(logs, startIso, endIso) {
+        // นับตามวันของกะ (เหมือนรายงานกะ): เริ่มกะ Day วันแรก ถึงสิ้นกะ Night วันสุดท้าย
+        const from = shiftWindow(startIso, 'Day').start, to = shiftWindow(endIso, 'Night').end;
+        const windows = [];
+        listDates(minToIso(from - 1440).substring(0, 10), endIso).forEach(d => Object.keys(SHIFT_CONFIG).forEach(s => windows.push(shiftWindow(d, s))));
+        const windowOf = t => windows.find(w => t >= w.start && t < w.end);
+        const workMin = (a, b, w) => {
+            let m = b - a;
+            w.breaks.forEach(([x, y]) => { m -= Math.max(0, Math.min(y, b) - Math.max(x, a)); });
+            return m;
+        };
+        const pcsOf = l => l.fgPcs !== undefined ? l.fgPcs + l.ngPcs : qtyToPcs(l.fgSorted, l.product) + qtyToPcs(l.ngSorted, l.product);
+
+        const items = logs.map(l => ({ ...l, t: isoToMin(l.sortedAt), pcs: pcsOf(l), key: caseKey(modelOf(l.product), l.symptom) })).filter(l => !isNaN(l.t));
+        const countByJob = {};
+        items.forEach(l => { countByJob[l.jobId] = (countByJob[l.jobId] || 0) + 1; });
+        const isRework = l => l.isResubmit || countByJob[l.jobId] > 1;
+
+        const cases = {};
+        const caseOf = key => (cases[key] = cases[key] || { key, totalPcs: 0, rates: [], pcs: 0, minutes: 0 });
+        const excluded = { rework: 0, mixed: 0, noTime: 0 };
+        items.forEach(l => { if (l.t >= from && l.t < to && l.pcs > 0) caseOf(l.key).totalPcs += l.pcs; });
+
+        const bySorter = {};
+        items.forEach(l => { (bySorter[l.sorter || '-'] = bySorter[l.sorter || '-'] || []).push(l); });
+        Object.values(bySorter).forEach(list => {
+            list.sort((a, b) => a.t - b.t);
+            let prevT = null;
+            for (let i = 0; i < list.length;) {
+                const batch = [list[i]];
+                while (i + batch.length < list.length && list[i + batch.length].t - batch[batch.length - 1].t <= STATS_BATCH_GAP_MIN) batch.push(list[i + batch.length]);
+                i += batch.length;
+                const t0 = batch[0].t, tEnd = batch[batch.length - 1].t;
+                const w = windowOf(t0);
+                const segStart = w ? (prevT !== null && prevT >= w.start ? prevT : w.start) : null;
+                prevT = tEnd;
+                if (!w || t0 < from || t0 >= to) continue;
+                const counted = batch.filter(l => l.pcs > 0 || isRework(l));
+                if (counted.length === 0) continue;
+                if (counted.some(isRework)) { excluded.rework++; continue; }
+                const keys = new Set(counted.map(l => l.key));
+                if (keys.size > 1) { excluded.mixed++; continue; }
+                const minutes = workMin(segStart, tEnd, w);
+                if (minutes <= 0) { excluded.noTime++; continue; }
+                const pcs = counted.reduce((sum, l) => sum + l.pcs, 0);
+                const c = caseOf(counted[0].key);
+                c.pcs += pcs; c.minutes += minutes; c.rates.push(pcs / (minutes / 60));
+            }
+        });
+
+        const median = arr => {
+            if (arr.length === 0) return 0;
+            const a = arr.slice().sort((x, y) => x - y), m = Math.floor(a.length / 2);
+            return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+        };
+        const rows = Object.values(cases).map(c => {
+            const [model, symptom] = c.key.split(KEY_SEP);
+            const hours = c.minutes / 60;
+            return { model, symptom, totalPcs: c.totalPcs, samples: c.rates.length, pcs: c.pcs, hours,
+                     avgRate: hours > 0 ? c.pcs / hours : 0, medianRate: median(c.rates) };
+        }).sort((a, b) => b.totalPcs - a.totalPcs);
+        return { rows, excluded };
+    }
+
     function listDates(startIso, endIso) {
         const out = [];
         for (let m = isoToMin(startIso); m <= isoToMin(endIso); m += 1440) out.push(minToIso(m).substring(0, 10));
@@ -409,6 +525,9 @@
         const iso = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().substring(0, 10);
         document.getElementById('f-start').value = iso;
         document.getElementById('f-end').value = iso;
+        const monthAgo = new Date(today.getTime() - 29 * 86400000 - today.getTimezoneOffset() * 60000).toISOString().substring(0, 10);
+        document.getElementById('s-start').value = monthAgo;
+        document.getElementById('s-end').value = iso;
 
         renderShiftHelp();
         fetchSymptomOptions();
@@ -458,7 +577,7 @@
     }
 
     function switchTab(tab) {
-        ['report', 'target', 'help'].forEach(t => {
+        ['report', 'target', 'stats', 'help'].forEach(t => {
             document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
             const btn = document.getElementById('tab-btn-' + t);
             btn.classList.toggle('border-purple-600', t === tab);
@@ -491,6 +610,93 @@
         return res.json();
     }
 
+    let lastStats = null;
+    async function loadStats() {
+        const start = document.getElementById('s-start').value;
+        const end = document.getElementById('s-end').value;
+        if (!start || !end || start > end) { alert('กรุณาเลือกช่วงวันที่ให้ถูกต้อง'); return; }
+        const body = document.getElementById('stats-body');
+        const warn = document.getElementById('stats-warning');
+        const btn = document.getElementById('btn-stats');
+        btn.disabled = true; btn.innerText = '⏳ กำลังคำนวณ...';
+        body.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-400">⏳ กำลังโหลดข้อมูล...</td></tr>';
+        warn.classList.add('hidden');
+
+        const { data, credited } = await fetchEvalData(start, end);
+        btn.disabled = false; btn.innerText = '🔍 คำนวณสถิติ';
+        if (!data) {
+            body.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-red-500">โหลดข้อมูลไม่สำเร็จ — backend อาจยังไม่ได้อัปเดตให้รองรับรายงานนี้ (GET_SORT_EVAL_DATA)</td></tr>';
+            return;
+        }
+        sortTargets = data.targets || [];
+
+        const stats = calcCaseStats(data.logs, start, end);
+        lastStats = { start, end, ...stats };
+        const warnings = [];
+        if (!credited) warnings.push('โหลดยอดรวมของงานไม่สำเร็จ — งานที่ QC ตีกลับแล้วส่งใหม่ อาจนับยอดรอบที่ถูกตีกลับซ้ำ');
+        if (data.firstLogAt && start + ' 08:00' < data.firstLogAt) warnings.push(`เริ่มเก็บ Sort_Log ตั้งแต่ ${data.firstLogAt} — ก่อนหน้านั้นไม่มีข้อมูล`);
+        const ex = stats.excluded;
+        if (ex.rework + ex.mixed + ex.noTime > 0) warnings.push(`ไม่นำมาคิด: งานตีกลับ/Recall ${ex.rework} ครั้ง · ส่งหลายเคสพร้อมกัน ${ex.mixed} ครั้ง · หาเวลาไม่ได้ ${ex.noTime} ครั้ง`);
+        if (warnings.length) { warn.innerHTML = warnings.map(w => '⚠ ' + w).join('<br>'); warn.classList.remove('hidden'); }
+
+        if (stats.rows.length === 0) {
+            body.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-400">ไม่มีการส่งยอดคัดในช่วงนี้</td></tr>';
+            return;
+        }
+        body.innerHTML = stats.rows.map(r => {
+            const target = findTarget(r.model, r.symptom, sortTargets);
+            const few = r.samples < 5;
+            return `<tr class="border-t">
+                <td class="p-3">${r.model}<div class="text-[11px] text-gray-500">${r.symptom || '-'}</div></td>
+                <td class="p-3 text-right num">${fmt(r.totalPcs)}</td>
+                <td class="p-3 text-right num ${few ? 'text-orange-600' : ''}">${fmt(r.samples)}${few ? '<div class="text-[10px]">ข้อมูลยังน้อย</div>' : ''}</td>
+                <td class="p-3 text-right num">${fmt(r.pcs)}</td>
+                <td class="p-3 text-right num">${r.samples ? fmt(r.hours, 2) : '-'}</td>
+                <td class="p-3 text-right num font-bold">${r.samples ? fmt(r.avgRate) : '-'}</td>
+                <td class="p-3 text-right num font-bold text-purple-700">${r.samples ? fmt(r.medianRate) : '-'}</td>
+                <td class="p-3 text-right num">${target > 0 ? fmt(target) : '<span class="text-orange-600">ยังไม่ตั้งเป้า</span>'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function exportStatsCsv() {
+        if (!lastStats || lastStats.rows.length === 0) { alert('กรุณากด "คำนวณสถิติ" ก่อน'); return; }
+        const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+        const lines = [['รุ่น', 'อาการ NG', 'คัดได้ทั้งหมด (ชิ้น)', 'ครั้งที่ใช้คิด', 'ชิ้นที่ใช้คิด', 'ชม.ที่ใช้คิด', 'เฉลี่ย ชิ้น/ชม.', 'ค่ากลาง ชิ้น/ชม.', 'เป้าปัจจุบัน'].map(q).join(',')];
+        lastStats.rows.forEach(r => {
+            lines.push([r.model, r.symptom || '-', r.totalPcs, r.samples, r.pcs, r.hours.toFixed(2), Math.round(r.avgRate), Math.round(r.medianRate),
+                        findTarget(r.model, r.symptom, sortTargets) || ''].map(q).join(','));
+        });
+        const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `CWM_Sort_Stats_${lastStats.start}_${lastStats.end}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    // ดึงข้อมูลประเมิน + ตัดยอดรอบที่ถูกตีกลับออก (ดู creditLogs)
+    async function fetchEvalData(start, end) {
+        // ยอดรวมสุดท้ายของแต่ละงาน (ชุดเดียวกับหน้างานรอ Sort) ไว้ตัดยอดรอบที่ถูกตีกลับออก
+        const finalTotalsReq = fetch(SCRIPT_URL + "?action=GET_SORTING").then(r => r.json()).catch(err => { console.error(err); return null; });
+        let data;
+        try {
+            data = await postJson({ action: 'GET_SORT_EVAL_DATA', start, end });
+        } catch (err) {
+            console.error(err);
+            data = null;
+        }
+        const finalTotals = await finalTotalsReq;
+        if (!data || data.status !== 'success' || !Array.isArray(data.logs)) return { data: null, credited: false };
+        const credited = !!(finalTotals && finalTotals.status === 'success' && Array.isArray(finalTotals.data));
+        if (credited) {
+            const finalByJob = {};
+            finalTotals.data.forEach(j => { finalByJob[String(j.jobId)] = { fgQty: j.fgQty, ngQty: j.ngQty, product: j.product }; });
+            data.logs = creditLogs(data.logs, finalByJob);
+        }
+        return { data, credited };
+    }
+
     async function loadReport() {
         const start = document.getElementById('f-start').value;
         const end = document.getElementById('f-end').value;
@@ -505,19 +711,10 @@
         document.getElementById('report-detail').classList.add('hidden');
         warn.classList.add('hidden');
 
-        // ยอดรวมสุดท้ายของแต่ละงาน (ชุดเดียวกับหน้างานรอ Sort) ไว้ตัดยอดรอบที่ถูกตีกลับออก
-        const finalTotalsReq = fetch(SCRIPT_URL + "?action=GET_SORTING").then(r => r.json()).catch(err => { console.error(err); return null; });
-        let data;
-        try {
-            data = await postJson({ action: 'GET_SORT_EVAL_DATA', start, end });
-        } catch (err) {
-            console.error(err);
-            data = null;
-        }
-        const finalTotals = await finalTotalsReq;
+        const { data, credited } = await fetchEvalData(start, end);
         btn.disabled = false; btn.innerText = '🔍 แสดงรายงาน';
 
-        if (!data || data.status !== 'success' || !Array.isArray(data.logs)) {
+        if (!data) {
             body.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-red-500">โหลดข้อมูลไม่สำเร็จ — backend อาจยังไม่ได้อัปเดตให้รองรับรายงานนี้ (GET_SORT_EVAL_DATA)</td></tr>';
             return;
         }
@@ -528,11 +725,7 @@
         renderTargets();
 
         const warnings = [];
-        if (finalTotals && finalTotals.status === 'success' && Array.isArray(finalTotals.data)) {
-            const finalByJob = {};
-            finalTotals.data.forEach(j => { finalByJob[String(j.jobId)] = { fgQty: j.fgQty, ngQty: j.ngQty, product: j.product }; });
-            data.logs = creditLogs(data.logs, finalByJob);
-        } else {
+        if (!credited) {
             warnings.push('โหลดยอดรวมของงานไม่สำเร็จ — งานที่ QC ตีกลับแล้วส่งใหม่ อาจนับยอดรอบที่ถูกตีกลับซ้ำ');
         }
         if (sortTargets.length === 0) warnings.push('ยังไม่ได้ตั้งเป้า — ไปที่แท็บ "🎯 เป้ารุ่น × อาการ NG" เพื่อตั้งเป้าก่อน');
