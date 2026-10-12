@@ -166,7 +166,7 @@
             <h3 class="font-bold text-gray-800">หมายเหตุ</h3>
             <ul class="list-disc ml-5 space-y-1 text-gray-600">
                 <li>ยอดที่คัดได้มาจากชีต <code>Sort_Log</code> ซึ่งบันทึกทุกครั้งที่ผู้คัดกด "ส่งให้ QC ตรวจ" — นับเข้ากะตามเวลาที่ส่งยอด และนับยอดให้ชื่อผู้คัดที่ส่งยอด</li>
-                <li>งานที่ QC ตีกลับแล้วคัดซ้ำ นับเฉพาะยอดที่คัดเพิ่มในรอบใหม่</li>
+                <li>งานที่ QC ตีกลับ/Recall แล้วส่งยอดใหม่ ยอดรอบหลังแทนยอดรอบก่อน — ยอดรวมทุกรอบของงานหนึ่งไม่เกินยอด FG/NG สุดท้ายของงานนั้น (รอบที่ใส่ยอดผิดแล้วถูกตีกลับจึงไม่ถูกนับ)</li>
                 <li>งานค้างตอนเริ่มกะ = งานที่ลงทะเบียนก่อนเริ่มกะ และยังไม่มีการส่งยอดคัดก่อนเริ่มกะ</li>
                 <li>คิดเป็นภาพรวมทั้งกะ (ไม่แยกรายคน) — ยอดรายคนแสดงไว้ดูประกอบ</li>
                 <li>กะที่ไม่มีการบันทึกยอดเลย จะไม่ถูกนำมารวมในสรุปรายวัน</li>
@@ -273,6 +273,27 @@
         return { rows, hours, pcs, missingPcs };
     }
 
+    // ยอดที่นับให้แต่ละครั้งที่ส่ง (ชิ้น) — งานที่ QC ตีกลับ/Recall แล้วส่งใหม่ ยอดรอบหลังแทนยอดรอบก่อน
+    // Sort_Log เก็บทุกครั้งที่ส่ง (รวมรอบที่ใส่ยอดผิดแล้วถูกตีกลับ) จึงไล่จากครั้งล่าสุดย้อนขึ้นไป
+    // ให้แต่ละครั้งได้ยอดไม่เกินยอดรวมสุดท้ายของงาน (FG/NG ในชีต Sorting_Data) ที่ยังเหลือ
+    // finalByJob = { jobId: { fgQty, ngQty, product } } — งานที่ไม่รู้ยอดรวม นับตามที่ส่งมา
+    function creditLogs(logs, finalByJob) {
+        const out = logs.map(l => ({ ...l, fgPcs: qtyToPcs(l.fgSorted, l.product), ngPcs: qtyToPcs(l.ngSorted, l.product) }));
+        const byJob = {};
+        out.forEach(l => { (byJob[l.jobId] = byJob[l.jobId] || []).push(l); });
+        Object.keys(byJob).forEach(jobId => {
+            const fin = (finalByJob || {})[jobId];
+            if (!fin) return;
+            const jobLogs = byJob[jobId].sort((a, b) => String(b.sortedAt).localeCompare(String(a.sortedAt)));
+            [['fgQty', 'fgPcs'], ['ngQty', 'ngPcs']].forEach(([finKey, pcsKey]) => {
+                if (fin[finKey] === undefined || fin[finKey] === null || String(fin[finKey]).trim() === '') return;
+                let left = qtyToPcs(fin[finKey], fin.product || jobLogs[0].product);
+                jobLogs.forEach(l => { l[pcsKey] = Math.min(l[pcsKey], left); left -= l[pcsKey]; });
+            });
+        });
+        return out;
+    }
+
     // คำนวณรายงานของ 1 กะ — data = {logs, jobs, targets}
     function calcShift(dateIso, shiftName, data) {
         const w = shiftWindow(dateIso, shiftName);
@@ -321,7 +342,7 @@
         // 3) ยอดที่คัดได้ในกะ (แยกรุ่น + แยกผู้คัด)
         const sortedByModel = {}, bySorter = {};
         shiftLogs.forEach(l => {
-            const pcs = qtyToPcs(l.fgSorted, l.product) + qtyToPcs(l.ngSorted, l.product);
+            const pcs = l.fgPcs !== undefined ? l.fgPcs + l.ngPcs : qtyToPcs(l.fgSorted, l.product) + qtyToPcs(l.ngSorted, l.product);
             const model = caseKey(modelOf(l.product), l.symptom);
             sortedByModel[model] = (sortedByModel[model] || 0) + pcs;
             const name = l.sorter || '-';
@@ -484,6 +505,8 @@
         document.getElementById('report-detail').classList.add('hidden');
         warn.classList.add('hidden');
 
+        // ยอดรวมสุดท้ายของแต่ละงาน (ชุดเดียวกับหน้างานรอ Sort) ไว้ตัดยอดรอบที่ถูกตีกลับออก
+        const finalTotalsReq = fetch(SCRIPT_URL + "?action=GET_SORTING").then(r => r.json()).catch(err => { console.error(err); return null; });
         let data;
         try {
             data = await postJson({ action: 'GET_SORT_EVAL_DATA', start, end });
@@ -491,6 +514,7 @@
             console.error(err);
             data = null;
         }
+        const finalTotals = await finalTotalsReq;
         btn.disabled = false; btn.innerText = '🔍 แสดงรายงาน';
 
         if (!data || data.status !== 'success' || !Array.isArray(data.logs)) {
@@ -504,6 +528,13 @@
         renderTargets();
 
         const warnings = [];
+        if (finalTotals && finalTotals.status === 'success' && Array.isArray(finalTotals.data)) {
+            const finalByJob = {};
+            finalTotals.data.forEach(j => { finalByJob[String(j.jobId)] = { fgQty: j.fgQty, ngQty: j.ngQty, product: j.product }; });
+            data.logs = creditLogs(data.logs, finalByJob);
+        } else {
+            warnings.push('โหลดยอดรวมของงานไม่สำเร็จ — งานที่ QC ตีกลับแล้วส่งใหม่ อาจนับยอดรอบที่ถูกตีกลับซ้ำ');
+        }
         if (sortTargets.length === 0) warnings.push('ยังไม่ได้ตั้งเป้า — ไปที่แท็บ "🎯 เป้ารุ่น × อาการ NG" เพื่อตั้งเป้าก่อน');
         if (!data.firstLogAt) warnings.push('ยังไม่มีข้อมูลใน Sort_Log (ระบบจะเริ่มเก็บเมื่อผู้คัดกด "ส่งให้ QC ตรวจ" หลังอัปเดต backend)');
         else if (start + ' 08:00' < data.firstLogAt) warnings.push(`เริ่มเก็บ Sort_Log ตั้งแต่ ${data.firstLogAt} — กะก่อนหน้านั้นข้อมูลไม่ครบ`);
