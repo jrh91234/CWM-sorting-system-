@@ -1613,10 +1613,14 @@
 
                 if (job.status === 'Wait QC') {
                     statusBadge = `<span class="status-badge status-WaitQC">รอ QC ตรวจ</span>`;
+                    // ธง TRUE ทั้งคู่ขณะยัง Wait QC = ข้อมูลค้างจาก Recall → แสดงเป็นรออนุมัติ
+                    const staleBothApproved = !!job.qcFgApproved && !!job.qcNgApproved;
+                    const fgApprovedShown = !!job.qcFgApproved && !staleBothApproved;
+                    const ngApprovedShown = !!job.qcNgApproved && !staleBothApproved;
                     const partialApproveBadge = `
                         <div class="mt-1 flex flex-wrap gap-1">
-                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${job.qcFgApproved ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">FG ${job.qcFgApproved ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
-                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${job.qcNgApproved ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">NG ${job.qcNgApproved ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${fgApprovedShown ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">FG ${fgApprovedShown ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${ngApprovedShown ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}">NG ${ngApprovedShown ? 'อนุมัติแล้ว' : 'รออนุมัติ'}</span>
                         </div>
                     `;
                     fgNgDisplay = `
@@ -2142,10 +2146,16 @@
             const fgCheckbox = document.getElementById('app-fg');
             const ngCheckbox = document.getElementById('app-ng');
 
-            fgCheckbox.checked = !job.qcFgApproved;
-            ngCheckbox.checked = !job.qcNgApproved;
-            fgCheckbox.disabled = !!job.qcFgApproved;
-            ngCheckbox.disabled = !!job.qcNgApproved;
+            // งานที่ยังรอ QC แต่ธงอนุมัติเป็น TRUE ทั้งคู่ = ข้อมูลค้างจากการ Recall (ไม่ได้ล้างธง)
+            // ให้ถือว่ายังไม่ได้อนุมัติทั้งสองด้าน ไม่งั้น checkbox จะถูก disable หมดและกดอนุมัติไม่ได้
+            const staleBoth = !!job.qcFgApproved && !!job.qcNgApproved;
+            const fgDone = !!job.qcFgApproved && !staleBoth;
+            const ngDone = !!job.qcNgApproved && !staleBoth;
+
+            fgCheckbox.checked = !fgDone;
+            ngCheckbox.checked = !ngDone;
+            fgCheckbox.disabled = fgDone;
+            ngCheckbox.disabled = ngDone;
             document.getElementById('qcApproveModal').classList.remove('hidden');
         }
 
